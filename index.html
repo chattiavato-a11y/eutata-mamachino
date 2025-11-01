@@ -2,16 +2,17 @@
 <html lang="en" data-theme="dark">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat · L1 with Shield + L4–L6</title>
+<title>Chat · Local-first with WebGPU fallback</title>
 <style>
   :root{ --bg:#0b0c10; --card:#121319; --ink:#e6e6e6; --muted:#a9b0b8; --accent:#6ad1ff; --ring:rgba(106,209,255,.35); }
   [data-theme="light"]{ --bg:#ffffff; --card:#f5f7fb; --ink:#1f2430; --muted:#536070; --accent:#0077ff; --ring:rgba(0,119,255,.25); }
   body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial;}
-  .wrap{max-width:820px;margin:0 auto;padding:20px}
-  header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
-  .toggles{display:flex;gap:8px;align-items:center}
+  .wrap{max-width:900px;margin:0 auto;padding:20px}
+  header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap}
+  .toggles{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   button,select{background:var(--card);color:var(--ink);border:1px solid #242634;border-radius:10px;padding:8px 12px}
   button:hover{outline:2px solid var(--ring)}
+  .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #242634;background:var(--card)}
   .chat{background:var(--card);border:1px solid #242634;border-radius:14px;padding:14px;height:60vh;overflow:auto}
   .msg{margin:8px 0;padding:10px 12px;border-radius:10px;white-space:pre-wrap}
   .me{background:rgba(106,209,255,.08);border:1px solid rgba(106,209,255,.25)}
@@ -26,15 +27,22 @@
 <div class="wrap">
   <header>
     <div>
-      <strong>L1 UI (Shield → L4/5/6 → L2/3/7)</strong><br>
-      <span class="muted">Local first; external only on fallback. SSE preserved.</span>
+      <strong>L1 → L5 (extractive) → WebLLM/WebGPU (low confidence only) → L2/L3/L7</strong><br>
+      <span class="muted">Local-first; external only if allowed. Budgeted 75k–100k tokens per session.</span>
     </div>
     <div class="toggles">
-      <label class="muted">Theme</label><button id="themeBtn" aria-pressed="true">Dark</button>
+      <button id="themeBtn" aria-pressed="true">Dark</button>
       <label class="muted">Lang</label>
       <select id="langSel"><option value="en" selected>EN</option><option value="es">ES</option></select>
-      <button id="micBtn" title="Hold to speak">🎤</button>
-      <button id="ttsBtn" title="Read last reply">🔊</button>
+      <div class="pill" title="Routing Mode">
+        <label class="muted">Mode</label>
+        <select id="modeSel">
+          <option value="hybrid" selected>Hybrid</option>
+          <option value="local">Local only</option>
+          <option value="external">External only</option>
+        </select>
+      </div>
+      <div class="pill"><span class="muted">Session tokens:</span>&nbsp;<span id="budgetHint">0</span></div>
     </div>
   </header>
 
@@ -51,44 +59,42 @@
 
 <script src="./shield.js"></script>
 <script type="module">
-import { L4Audio } from './l4_audio.js';
 import { routeChat } from './l6_orchestrator.js';
 
 const qs=(s)=>document.querySelector(s);
 const chat=qs('#chat'), inp=qs('#input'), send=qs('#send'), status=qs('#status'), warn=qs('#warn');
 const langSel=qs('#langSel'); const themeBtn=qs('#themeBtn'); const form=qs('#chatForm');
-const micBtn=qs('#micBtn'); const ttsBtn=qs('#ttsBtn');
+const modeSel=qs('#modeSel'); const budgetHint=qs('#budgetHint');
 
 // Honeypot + state
 const hpInput = (()=>{ const hp=document.createElement('input'); hp.type='text'; hp.name='hp';
   hp.tabIndex=-1; hp.ariaHidden='true'; hp.style.cssText='position:absolute;left:-5000px;width:1px;height:1px;opacity:0;'; form.appendChild(hp); return hp; })();
 
-const state={ messages:[], lang:'en', theme:'dark', csrf: csrfToken(), hp:'' };
+const state={ messages:[], lang:'en', theme:'dark', csrf: csrfToken(), hp:'', mode:'hybrid', webllmModel:'Llama-3.1-8B-Instruct-q4f16_1' };
 
-function csrfToken(){
-  const key='shield.csrf'; let t=sessionStorage.getItem(key);
-  if(!t){ t=randomId(24); sessionStorage.setItem(key,t); }
-  return t;
-}
-function randomId(len=22){ const abc='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
-  let s=''; for(let i=0;i<len;i++) s+=abc[Math.floor(Math.random()*abc.length)]; return s; }
+function csrfToken(){ const k='shield.csrf'; let t=sessionStorage.getItem(k); if(!t){ t=randomId(24); sessionStorage.setItem(k,t);} return t; }
+function randomId(len=22){ const abc='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-'; let s=''; for(let i=0;i<len;i++) s+=abc[Math.floor(Math.random()*abc.length)]; return s; }
+
+function addMsg(role, text){ const d=document.createElement('div'); d.className='msg '+(role==='user'?'me':'ai');
+  d.textContent=text; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; return d; }
 
 themeBtn.onclick=()=>{ state.theme = state.theme==='dark'?'light':'dark';
-  document.documentElement.dataset.theme = state.theme; themeBtn.textContent = state.theme[0].toUpperCase()+state.theme.slice(1);
-};
+  document.documentElement.dataset.theme=state.theme; themeBtn.textContent=state.theme[0].toUpperCase()+state.theme.slice(1); };
 langSel.onchange=(e)=> state.lang = e.target.value;
+modeSel.onchange=(e)=> state.mode = e.target.value;
 
-function addMsg(role, text){
-  const div=document.createElement('div'); div.className='msg '+(role==='user'?'me':'ai');
-  div.textContent = text; chat.appendChild(div); chat.scrollTop=chat.scrollHeight; return div;
-}
+// Budget hint updater (reads from server header or streaming text length via MutationObserver optional)
+// Simple timer polling for demo:
+setInterval(()=>{
+  // naive: count all assistant text chars and estimate tokens
+  const text = Array.from(document.querySelectorAll('.msg.ai')).map(n=>n.textContent||'').join('');
+  budgetHint.textContent = Math.ceil(text.length/4);
+}, 800);
 
-// Shield check (same logic as before)
 function scanAndSanitize(input, maxLen=2000){
-  // quick inline mirror of Shield.scanAndSanitize to avoid global coupling
   const BIDI=/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C\u200B-\u200D\uFEFF]/g, NULLS=/\x00/g;
   const DANG=/\b(?:javascript|vbscript|file|data):/gi, TAGS=/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, ON=/\bon\w+\s*=/gi, CSSURL=/url\(\s*(['"]?)(.*?)\1\s*\)/gi, IMP=/@import\s+['"]?[^'"]+['"]?/gi;
-  const SUS=[/<script/i,/<\/script/i,/<iframe/i,/<object/i,/<embed/i,/<svg/i,/xlink:href/i,/onerror\s*=/i,/onload\s*=/i,/\.\.\//,/\\b(select|union|insert|update|delete|drop)\\b.*\\bfrom\\b/i,/\b(?:https?|ftp):\/\/[^\s]{2,}/i];
+  const SUS=[/<script/i,/<\/script/i,/<iframe/i,/<object/i,/<embed/i,/<svg/i,/xlink:href/i,/onerror\s*=/i,/onload\s*=/i,/\.\.\//,/\b(select|union|insert|update|delete|drop)\b.*\bfrom\b/i,/\b(?:https?|ftp):\/\/[^\s]{2,}/i];
   function norm(s){ try{ return s.normalize('NFKC'); }catch{ return s; } }
   function scrub(s){ let out=s.replace(ON,'').replace(TAGS,'').replace(IMP,''); out=out.replace(CSSURL,(m,q,u)=>DANG.test((u||'').replace(/\s/g,''))?'url(about:blank)':m); out=out.replace(DANG,'about:blank:'); return out.replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   let t=String(input||''); t=norm(t).replace(BIDI,'').replace(NULLS,''); if(t.length>maxLen) t=t.slice(0,maxLen); t=scrub(t);
@@ -101,8 +107,7 @@ async function sendMsg(){
   const raw=(inp.value||'').trim(); if(!raw) return;
   const v1=scanAndSanitize(raw); if(!v1.ok){ warn.textContent='Blocked input.'; return; }
   warn.textContent=''; addMsg('user', v1.sanitized);
-  state.messages.push({role:'user', content:v1.sanitized, lang: state.lang});
-  inp.value='';
+  state.messages.push({role:'user', content:v1.sanitized, lang: state.lang}); inp.value='';
 
   await routeChat({
     state: { ...state, hp: hpInput.value||'' },
@@ -112,23 +117,6 @@ async function sendMsg(){
 
 send.onclick=sendMsg;
 inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg(); }});
-
-// L4 buttons
-micBtn.onpointerdown = ()=>{
-  if (!('listen' in L4Audio)) return;
-  let finalText='';
-  const stop = L4Audio.listen({
-    lang: state.lang,
-    onResult: (t, fin)=>{ inp.value=t; if(fin){ finalText=t; } },
-    onEnd: ()=>{ if(finalText){ /* optional: auto-send */ } }
-  });
-  micBtn.onpointerup = ()=> stop && stop();
-};
-ttsBtn.onclick = ()=>{
-  const last = Array.from(chat.querySelectorAll('.msg.ai')).pop();
-  if (last) L4Audio.speak(last.textContent, state.lang);
-};
 </script>
 </body>
 </html>
-
