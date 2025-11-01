@@ -24,8 +24,62 @@
 </style>
 
 <body>
-<div class="wrap">
-  <header>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>OPS Chat Interface</h1>
+      </div>
+      <div class="toggles" role="group" aria-label="Display and language settings">
+        <label for="themeBtn" class="muted">Theme</label>
+        <button id="themeBtn" type="button" aria-pressed="true">Dark</button>
+        <label for="langSel" class="muted">Lang</label>
+        <select id="langSel" aria-label="Language selector">
+          <option value="en" selected>EN</option>
+          <option value="es">ES</option>
+        </select>
+      </div>
+    </header>
+
+    <main>
+      <section aria-labelledby="chat-title">
+        <div class="policy-card">
+          <h2 id="chat-title">Chattia</h2>
+          <form id="chatForm" novalidate>
+            <div id="chat" class="chat" role="log" aria-live="polite"></div>
+            <div class="bar">
+              <label class="visually-hidden" for="input">Chat message</label>
+              <textarea id="input" placeholder="Type a message…" aria-label="Message input"></textarea>
+              <button id="send" type="submit">Send</button>
+            </div>
+            <div class="muted" id="status" role="status" aria-live="polite"></div>
+            <div class="bad" id="warn" role="alert"></div>
+          </form>
+        </div>
+      </section>
+
+    </main>
+
+    <footer>
+      <nav class="footer-links" aria-label="Compliance policies">
+        <details>
+          <summary>Cookie Consent</summary>
+          <p>By using this tool, you agree that essential cookies collect operational details needed for the service. We study aggregated chatbot interaction behavior strictly to improve responses, and no PII or other data beyond chat content is gathered.</p>
+        </details>
+        <details>
+          <summary>Terms &amp; Conditions</summary>
+          <p>Use of this chat interface signifies agreement to comply with all acceptable use policies, maintain confidentiality of outputs, and avoid transmitting malicious or unauthorized data.</p>
+          <p>Services are provided “as is” with no warranty; uptime targets follow PCI DSS operational resilience guidelines, and jurisdiction is governed by applicable local laws.</p>
+        </details>
+        <details>
+          <summary>Trademark &amp; Copyright</summary>
+          <p>&copy; <span id="copyrightYear"></span> ShieldOps. All rights reserved. ShieldOps, the Shield logo, and related marks are trademarks of their respective owners.</p>
+          <p>Unauthorized reproduction, distribution, or modification is prohibited without prior written consent. Third-party marks referenced are property of their owners.</p>
+        </details>
+      </nav>
+    </footer>
+  </div>
+
+  <div id="cookieBanner" class="cookie-banner hidden" role="dialog" aria-live="polite" aria-modal="false" aria-label="Cookie consent">
     <div>
       <strong>L1 → L5 (extractive) → WebLLM/WebGPU (low confidence only) → L2/L3/L7</strong><br>
       <span class="muted">Local-first; external only if allowed. Budgeted 75k–100k tokens per session.</span>
@@ -44,13 +98,9 @@
       </div>
       <div class="pill"><span class="muted">Session tokens:</span>&nbsp;<span id="budgetHint">0</span></div>
     </div>
-  </header>
-
-  <form id="chatForm" onsubmit="return false">
-    <div id="chat" class="chat" role="log" aria-live="polite"></div>
-    <div class="bar">
-      <textarea id="input" placeholder="Type a message…"></textarea>
-      <button id="send">Send</button>
+    <div class="cookie-actions">
+      <button id="declineCookies" type="button">Remind me later</button>
+      <button id="acceptCookies" type="button">Agree &amp; continue</button>
     </div>
     <div class="muted" id="status"></div>
     <div class="bad" id="warn"></div>
@@ -115,8 +165,7 @@ async function sendMsg(){
   });
 }
 
-send.onclick=sendMsg;
-inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg(); }});
-</script>
+  <script src="./shield.js" defer></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
