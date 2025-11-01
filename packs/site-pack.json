@@ -1,0 +1,26 @@
+{
+  "version": "1",
+  "docs": [
+    {
+      "id": "ops_pillars",
+      "lang": "en",
+      "title": "OPS Service Pillars",
+      "url": "/ops#pillars",
+      "chunks": [
+        { "id": "ops_pillars_1", "text": "Business Operations: billing, AP/AR, vendor coordination, admin support, marketing." },
+        { "id": "ops_pillars_2", "text": "Contact Center: multichannel support, order rescue, CSAT and SLA discipline." },
+        { "id": "ops_pillars_3", "text": "IT Support: access, setup, incident handling, simple fixes to keep teams productive." },
+        { "id": "ops_pillars_4", "text": "Professionals On Demand: project-based specialists for analysis, finance, HR, and branding." }
+      ]
+    },
+    {
+      "id": "ops_values",
+      "lang": "es",
+      "title": "Valores y Señales OPS",
+      "url": "/ops#valores",
+      "chunks": [
+        { "id": "ops_values_1", "text": "Cobertura confiable, comunicación clara, alcances definidos, y participación flexible." }
+      ]
+    }
+  ]
+}
