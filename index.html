@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat · L1 with Shield</title>
+<title>Chat · L1 with Shield + L4–L6</title>
 <style>
   :root{ --bg:#0b0c10; --card:#121319; --ink:#e6e6e6; --muted:#a9b0b8; --accent:#6ad1ff; --ring:rgba(106,209,255,.35); }
   [data-theme="light"]{ --bg:#ffffff; --card:#f5f7fb; --ink:#1f2430; --muted:#536070; --accent:#0077ff; --ring:rgba(0,119,255,.25); }
@@ -26,13 +26,15 @@
 <div class="wrap">
   <header>
     <div>
-      <strong>L1 UI (Shield → L1 → L2)</strong><br>
-      <span class="muted">Client pre-filter + pre-send checks • SSE streaming</span>
+      <strong>L1 UI (Shield → L4/5/6 → L2/3/7)</strong><br>
+      <span class="muted">Local first; external only on fallback. SSE preserved.</span>
     </div>
     <div class="toggles">
       <label class="muted">Theme</label><button id="themeBtn" aria-pressed="true">Dark</button>
       <label class="muted">Lang</label>
       <select id="langSel"><option value="en" selected>EN</option><option value="es">ES</option></select>
+      <button id="micBtn" title="Hold to speak">🎤</button>
+      <button id="ttsBtn" title="Read last reply">🔊</button>
     </div>
   </header>
 
@@ -48,90 +50,85 @@
 </div>
 
 <script src="./shield.js"></script>
-<script>
+<script type="module">
+import { L4Audio } from './l4_audio.js';
+import { routeChat } from './l6_orchestrator.js';
+
 const qs=(s)=>document.querySelector(s);
 const chat=qs('#chat'), inp=qs('#input'), send=qs('#send'), status=qs('#status'), warn=qs('#warn');
 const langSel=qs('#langSel'); const themeBtn=qs('#themeBtn'); const form=qs('#chatForm');
+const micBtn=qs('#micBtn'); const ttsBtn=qs('#ttsBtn');
 
-// Honeypot field (bots fill it; humans don't)
-const hpInput = Shield.attachHoneypot(form);
+// Honeypot + state
+const hpInput = (()=>{ const hp=document.createElement('input'); hp.type='text'; hp.name='hp';
+  hp.tabIndex=-1; hp.ariaHidden='true'; hp.style.cssText='position:absolute;left:-5000px;width:1px;height:1px;opacity:0;'; form.appendChild(hp); return hp; })();
 
-// Minimal state
-const state={ messages:[], lang:'en', theme:'dark', csrf: Shield.csrfToken() };
+const state={ messages:[], lang:'en', theme:'dark', csrf: csrfToken(), hp:'' };
+
+function csrfToken(){
+  const key='shield.csrf'; let t=sessionStorage.getItem(key);
+  if(!t){ t=randomId(24); sessionStorage.setItem(key,t); }
+  return t;
+}
+function randomId(len=22){ const abc='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-';
+  let s=''; for(let i=0;i<len;i++) s+=abc[Math.floor(Math.random()*abc.length)]; return s; }
 
 themeBtn.onclick=()=>{ state.theme = state.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme = state.theme; themeBtn.textContent = state.theme[0].toUpperCase()+state.theme.slice(1);
 };
 langSel.onchange=(e)=> state.lang = e.target.value;
 
-// Pre-L1 render safety: never use innerHTML with user text
-function add(role, text){
+function addMsg(role, text){
   const div=document.createElement('div'); div.className='msg '+(role==='user'?'me':'ai');
   div.textContent = text; chat.appendChild(div); chat.scrollTop=chat.scrollHeight; return div;
 }
 
-function clientCheck(text){
-  // First pass: pre-L1—block obvious malicious inputs *before* we render/echo anything
-  const check = Shield.scanAndSanitize(text, {maxLen: 2000, threshold: 12});
-  if (!check.ok){
-    warn.textContent = `Blocked by client Shield. Reasons: ${check.reasons.join(', ')}`;
-    return {ok:false};
-  }
-  warn.textContent = '';
-  return {ok:true, sanitized: check.sanitized};
+// Shield check (same logic as before)
+function scanAndSanitize(input, maxLen=2000){
+  // quick inline mirror of Shield.scanAndSanitize to avoid global coupling
+  const BIDI=/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C\u200B-\u200D\uFEFF]/g, NULLS=/\x00/g;
+  const DANG=/\b(?:javascript|vbscript|file|data):/gi, TAGS=/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, ON=/\bon\w+\s*=/gi, CSSURL=/url\(\s*(['"]?)(.*?)\1\s*\)/gi, IMP=/@import\s+['"]?[^'"]+['"]?/gi;
+  const SUS=[/<script/i,/<\/script/i,/<iframe/i,/<object/i,/<embed/i,/<svg/i,/xlink:href/i,/onerror\s*=/i,/onload\s*=/i,/\.\.\//,/\\b(select|union|insert|update|delete|drop)\\b.*\\bfrom\\b/i,/\b(?:https?|ftp):\/\/[^\s]{2,}/i];
+  function norm(s){ try{ return s.normalize('NFKC'); }catch{ return s; } }
+  function scrub(s){ let out=s.replace(ON,'').replace(TAGS,'').replace(IMP,''); out=out.replace(CSSURL,(m,q,u)=>DANG.test((u||'').replace(/\s/g,''))?'url(about:blank)':m); out=out.replace(DANG,'about:blank:'); return out.replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  let t=String(input||''); t=norm(t).replace(BIDI,'').replace(NULLS,''); if(t.length>maxLen) t=t.slice(0,maxLen); t=scrub(t);
+  const txt=t.toLowerCase(); let score=0,hits=[]; for(const re of SUS){ if(re.test(txt)){ score+=10; hits.push(re.source);} }
+  const link=(txt.match(/\bhttps?:\/\//g)||[]).length; score+=Math.min(link*2,10); const ang=(t.match(/[<>]/g)||[]).length; score+=Math.min(ang,10);
+  const ok=score<12; return { ok, sanitized:t, reasons: ok?[]:hits.slice(0,6) };
 }
 
 async function sendMsg(){
-  const raw = (inp.value||'').trim(); if(!raw) return;
-
-  // Client pass #1 — before we render the user's text
-  const v1 = clientCheck(raw);
-  if (!v1.ok) return;
-
-  // Render only sanitized text
-  add('user', v1.sanitized);
-  state.messages.push({role:'user', content: v1.sanitized, lang: state.lang});
+  const raw=(inp.value||'').trim(); if(!raw) return;
+  const v1=scanAndSanitize(raw); if(!v1.ok){ warn.textContent='Blocked input.'; return; }
+  warn.textContent=''; addMsg('user', v1.sanitized);
+  state.messages.push({role:'user', content:v1.sanitized, lang: state.lang});
   inp.value='';
 
-  // Client pass #2 — just before we call L2 (defense-in-depth)
-  const v2 = clientCheck(v1.sanitized);
-  if (!v2.ok) return;
-
-  // Stream from L2
-  status.textContent='Connecting…';
-  const res = await fetch('/api/chat', {
-    method:'POST',
-    headers:{'Content-Type':'application/json', 'X-CSRF': state.csrf },
-    body: JSON.stringify({
-      messages: state.messages.slice(-16),
-      lang: state.lang,
-      csrf: state.csrf,
-      hp: hpInput.value || ''
-    })
+  await routeChat({
+    state: { ...state, hp: hpInput.value||'' },
+    ui: { chatEl:chat, warnEl:warn, statusEl:status, addMsg }
   });
-  if(!res.ok || !res.body){ status.textContent='Error starting stream.'; return; }
-
-  status.textContent='Streaming…';
-  const reader = res.body.getReader(); const decoder = new TextDecoder();
-  const aiEl = add('assistant',''); let aiText='';
-
-  while(true){
-    const {value, done} = await reader.read(); if(done) break;
-    const chunk = decoder.decode(value, {stream:true});
-    for (const line of chunk.split('\n')){
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
-      if (data === '[END]') break;
-      aiText += data;
-      aiEl.textContent = aiText; chat.scrollTop=chat.scrollHeight;
-    }
-  }
-  status.textContent='Ready.';
-  state.messages.push({role:'assistant', content: aiText});
 }
 
 send.onclick=sendMsg;
 inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg(); }});
+
+// L4 buttons
+micBtn.onpointerdown = ()=>{
+  if (!('listen' in L4Audio)) return;
+  let finalText='';
+  const stop = L4Audio.listen({
+    lang: state.lang,
+    onResult: (t, fin)=>{ inp.value=t; if(fin){ finalText=t; } },
+    onEnd: ()=>{ if(finalText){ /* optional: auto-send */ } }
+  });
+  micBtn.onpointerup = ()=> stop && stop();
+};
+ttsBtn.onclick = ()=>{
+  const last = Array.from(chat.querySelectorAll('.msg.ai')).pop();
+  if (last) L4Audio.speak(last.textContent, state.lang);
+};
 </script>
 </body>
 </html>
+
