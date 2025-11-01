@@ -1,137 +1,87 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat · L1 with Shield</title>
-<style>
-  :root{ --bg:#0b0c10; --card:#121319; --ink:#e6e6e6; --muted:#a9b0b8; --accent:#6ad1ff; --ring:rgba(106,209,255,.35); }
-  [data-theme="light"]{ --bg:#ffffff; --card:#f5f7fb; --ink:#1f2430; --muted:#536070; --accent:#0077ff; --ring:rgba(0,119,255,.25); }
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial;}
-  .wrap{max-width:820px;margin:0 auto;padding:20px}
-  header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
-  .toggles{display:flex;gap:8px;align-items:center}
-  button,select{background:var(--card);color:var(--ink);border:1px solid #242634;border-radius:10px;padding:8px 12px}
-  button:hover{outline:2px solid var(--ring)}
-  .chat{background:var(--card);border:1px solid #242634;border-radius:14px;padding:14px;height:60vh;overflow:auto}
-  .msg{margin:8px 0;padding:10px 12px;border-radius:10px;white-space:pre-wrap}
-  .me{background:rgba(106,209,255,.08);border:1px solid rgba(106,209,255,.25)}
-  .ai{background:rgba(255,255,255,.03);border:1px solid #2a2d3b}
-  .bar{display:flex;gap:8px;margin-top:10px}
-  .bar textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:var(--card);color:var(--ink);border:1px solid #242634;border-radius:10px;padding:10px}
-  .muted{color:var(--muted);font-size:12px}
-  .bad{color:#ff7b7b}
-</style>
-
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OPS Chat · Chattia</title>
+  <meta name="description" content="Chattia OPS chat experience with streamlined controls and essential compliance messaging." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+  <meta http-equiv="Cross-Origin-Resource-Policy" content="same-site" />
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="preconnect" href="/" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 <body>
-<div class="wrap">
-  <header>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>OPS Chat Interface</h1>
+      </div>
+      <div class="toggles" role="group" aria-label="Display and language settings">
+        <label for="themeBtn" class="muted">Theme</label>
+        <button id="themeBtn" type="button" aria-pressed="true">Dark</button>
+        <label for="langSel" class="muted">Lang</label>
+        <select id="langSel" aria-label="Language selector">
+          <option value="en" selected>EN</option>
+          <option value="es">ES</option>
+        </select>
+      </div>
+    </header>
+
+    <main>
+      <section aria-labelledby="chat-title">
+        <div class="policy-card">
+          <h2 id="chat-title">Chattia</h2>
+          <form id="chatForm" novalidate>
+            <div id="chat" class="chat" role="log" aria-live="polite"></div>
+            <div class="bar">
+              <label class="visually-hidden" for="input">Chat message</label>
+              <textarea id="input" placeholder="Type a message…" aria-label="Message input"></textarea>
+              <button id="send" type="submit">Send</button>
+            </div>
+            <div class="muted" id="status" role="status" aria-live="polite"></div>
+            <div class="bad" id="warn" role="alert"></div>
+          </form>
+        </div>
+      </section>
+
+    </main>
+
+    <footer>
+      <nav class="footer-links" aria-label="Compliance policies">
+        <details>
+          <summary>Cookie Consent</summary>
+          <p>By using this tool, you agree that essential cookies collect operational details needed for the service. We study aggregated chatbot interaction behavior strictly to improve responses, and no PII or other data beyond chat content is gathered.</p>
+        </details>
+        <details>
+          <summary>Terms &amp; Conditions</summary>
+          <p>Use of this chat interface signifies agreement to comply with all acceptable use policies, maintain confidentiality of outputs, and avoid transmitting malicious or unauthorized data.</p>
+          <p>Services are provided “as is” with no warranty; uptime targets follow PCI DSS operational resilience guidelines, and jurisdiction is governed by applicable local laws.</p>
+        </details>
+        <details>
+          <summary>Trademark &amp; Copyright</summary>
+          <p>&copy; <span id="copyrightYear"></span> ShieldOps. All rights reserved. ShieldOps, the Shield logo, and related marks are trademarks of their respective owners.</p>
+          <p>Unauthorized reproduction, distribution, or modification is prohibited without prior written consent. Third-party marks referenced are property of their owners.</p>
+        </details>
+      </nav>
+    </footer>
+  </div>
+
+  <div id="cookieBanner" class="cookie-banner hidden" role="dialog" aria-live="polite" aria-modal="false" aria-label="Cookie consent">
     <div>
-      <strong>L1 UI (Shield → L1 → L2)</strong><br>
-      <span class="muted">Client pre-filter + pre-send checks • SSE streaming</span>
+      <strong>Essential cookies agreement</strong>
+      <p class="muted">Continuing means you fully agree to essential data collection that supports chat delivery. We review chatbot exchanges to enhance interactions and never capture PII or unrelated data beyond conversation content.</p>
     </div>
-    <div class="toggles">
-      <label class="muted">Theme</label><button id="themeBtn" aria-pressed="true">Dark</button>
-      <label class="muted">Lang</label>
-      <select id="langSel"><option value="en" selected>EN</option><option value="es">ES</option></select>
+    <div class="cookie-actions">
+      <button id="declineCookies" type="button">Remind me later</button>
+      <button id="acceptCookies" type="button">Agree &amp; continue</button>
     </div>
-  </header>
+  </div>
 
-  <form id="chatForm" onsubmit="return false">
-    <div id="chat" class="chat" role="log" aria-live="polite"></div>
-    <div class="bar">
-      <textarea id="input" placeholder="Type a message…"></textarea>
-      <button id="send">Send</button>
-    </div>
-    <div class="muted" id="status"></div>
-    <div class="bad" id="warn"></div>
-  </form>
-</div>
-
-<script src="./shield.js"></script>
-<script>
-const qs=(s)=>document.querySelector(s);
-const chat=qs('#chat'), inp=qs('#input'), send=qs('#send'), status=qs('#status'), warn=qs('#warn');
-const langSel=qs('#langSel'); const themeBtn=qs('#themeBtn'); const form=qs('#chatForm');
-
-// Honeypot field (bots fill it; humans don't)
-const hpInput = Shield.attachHoneypot(form);
-
-// Minimal state
-const state={ messages:[], lang:'en', theme:'dark', csrf: Shield.csrfToken() };
-
-themeBtn.onclick=()=>{ state.theme = state.theme==='dark'?'light':'dark';
-  document.documentElement.dataset.theme = state.theme; themeBtn.textContent = state.theme[0].toUpperCase()+state.theme.slice(1);
-};
-langSel.onchange=(e)=> state.lang = e.target.value;
-
-// Pre-L1 render safety: never use innerHTML with user text
-function add(role, text){
-  const div=document.createElement('div'); div.className='msg '+(role==='user'?'me':'ai');
-  div.textContent = text; chat.appendChild(div); chat.scrollTop=chat.scrollHeight; return div;
-}
-
-function clientCheck(text){
-  // First pass: pre-L1—block obvious malicious inputs *before* we render/echo anything
-  const check = Shield.scanAndSanitize(text, {maxLen: 2000, threshold: 12});
-  if (!check.ok){
-    warn.textContent = `Blocked by client Shield. Reasons: ${check.reasons.join(', ')}`;
-    return {ok:false};
-  }
-  warn.textContent = '';
-  return {ok:true, sanitized: check.sanitized};
-}
-
-async function sendMsg(){
-  const raw = (inp.value||'').trim(); if(!raw) return;
-
-  // Client pass #1 — before we render the user's text
-  const v1 = clientCheck(raw);
-  if (!v1.ok) return;
-
-  // Render only sanitized text
-  add('user', v1.sanitized);
-  state.messages.push({role:'user', content: v1.sanitized, lang: state.lang});
-  inp.value='';
-
-  // Client pass #2 — just before we call L2 (defense-in-depth)
-  const v2 = clientCheck(v1.sanitized);
-  if (!v2.ok) return;
-
-  // Stream from L2
-  status.textContent='Connecting…';
-  const res = await fetch('/api/chat', {
-    method:'POST',
-    headers:{'Content-Type':'application/json', 'X-CSRF': state.csrf },
-    body: JSON.stringify({
-      messages: state.messages.slice(-16),
-      lang: state.lang,
-      csrf: state.csrf,
-      hp: hpInput.value || ''
-    })
-  });
-  if(!res.ok || !res.body){ status.textContent='Error starting stream.'; return; }
-
-  status.textContent='Streaming…';
-  const reader = res.body.getReader(); const decoder = new TextDecoder();
-  const aiEl = add('assistant',''); let aiText='';
-
-  while(true){
-    const {value, done} = await reader.read(); if(done) break;
-    const chunk = decoder.decode(value, {stream:true});
-    for (const line of chunk.split('\n')){
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
-      if (data === '[END]') break;
-      aiText += data;
-      aiEl.textContent = aiText; chat.scrollTop=chat.scrollHeight;
-    }
-  }
-  status.textContent='Ready.';
-  state.messages.push({role:'assistant', content: aiText});
-}
-
-send.onclick=sendMsg;
-inp.addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMsg(); }});
-</script>
+  <script src="./shield.js" defer></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
