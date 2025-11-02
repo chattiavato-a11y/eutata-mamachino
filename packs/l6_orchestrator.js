@@ -103,7 +103,13 @@ async function tryExtractive({ query, lang, ui }){
   // stream locally (simulated) and budget
   setStatus(ui, lang, 'status.streamingLocal');
   const aiEl = ui.addMsg('assistant','');
-  let i=0; const step = () => {
+  let i=0;
+  const finish = () => {
+    const toks = Budget.approxTokens(text); Budget.note(toks);
+    applyStatus(ui, `Ready. (≈${Budget.spent} tokens)`);
+    if (ui?.focusAssistant) ui.focusAssistant(aiEl);
+  };
+  const step = () => {
     if (i < text.length){
       const chunk = text[i++]; aiEl.textContent += chunk; ui.chatEl.scrollTop = ui.chatEl.scrollHeight;
       return setTimeout(step, 8);
@@ -112,8 +118,10 @@ async function tryExtractive({ query, lang, ui }){
       setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
       return;
     }
-  }; step();
-  return { ok:true, text };
+    finish();
+  };
+  step();
+  return { ok:true, text, guardrails };
 }
 
 // Try WebLLM on GPU (only if low confidence)
@@ -133,13 +141,21 @@ async function tryWebGPU({ query, lang, ui, modelId, guard }){
   setStatus(ui, lang, 'status.streamingLocalGpu');
   const aiEl = ui.addMsg('assistant','');
   let tokensStreamed = 0;
+  let budgetWarned = false;
   const out = await WebLLM.generate({
     prompt: query,
     system: sys,
     onToken: (tok)=>{
-      // stop if we’d exceed hard budget
       const t = Budget.approxTokens(tok);
-      if (!Budget.canSpend(t)) return;
+      if (!Budget.canSpend(t)){
+        guardrails.budget.hardExceeded = true;
+        guardrails.blocked = true;
+        if (!budgetWarned){
+          pushWarning(guardrails, ui, 'Session token cap reached.', 'error');
+          budgetWarned = true;
+        }
+        return;
+      }
       tokensStreamed += t;
       aiEl.textContent += tok;
       ui.chatEl.scrollTop = ui.chatEl.scrollHeight;
@@ -163,6 +179,7 @@ async function tryServer({ state, ui, guard }){
   setStatus(ui, lang, 'status.streaming');
   const reader=res.body.getReader(); const dec=new TextDecoder();
   const aiEl=ui.addMsg('assistant',''); let text='';
+  let budgetWarned=false;
   while(true){
     const {value, done}=await reader.read(); if(done) break;
     const chunk=dec.decode(value,{stream:true});
@@ -218,15 +235,17 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
     return;
   }
 
+  clearWarnings(ui);
+
   // 1) Local extractive always first
   const ex = await tryExtractive({ query, lang: state.lang, ui });
+  mergeGuardrails(guardrails, ex.guardrails);
   if (ex.ok){
     state.messages.push({role:'assistant', content: ex.text});
-    // Soft cap nudge
     if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
       guard.warn('You are over the soft token cap (75k). Further generation will slow/trim.');
     }
-    return;
+    return { source:'extractive', guardrails };
   }
 
   // 2) Low confidence → try WebLLM/WebGPU if allowed by mode and GPU is available and budget permits
@@ -238,7 +257,7 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
         if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
           guard.warn('Soft cap exceeded (75k).');
         }
-        return;
+        return { source:'webgpu', guardrails };
       }
     } catch (e){
       // ignore and drop to server path
@@ -254,7 +273,8 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
     if (!Budget.canSpend(1000)){ guard.warn('Insufficient budget for server call.'); return; }
     const text = await tryServer({ state, ui, guard });
     if (text) state.messages.push({role:'assistant', content: text});
-    return;
+    if (!guardrails.warnings.length) clearWarnings(ui);
+    return { source:'server', guardrails };
   }
 
   // 4) Local-only and nothing worked
