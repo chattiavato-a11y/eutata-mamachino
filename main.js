@@ -115,6 +115,7 @@ function applyTheme(theme, { persist = true } = {}){
   themeButtons.forEach((btn) => {
     btn.textContent = translate(labelKey);
     btn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
+    btn.setAttribute('aria-label', translate(labelKey));
   });
   if (persist){
     safeSet(themeKey, normalized);
