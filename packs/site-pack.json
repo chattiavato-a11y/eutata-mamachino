@@ -2,15 +2,67 @@
   "version": "1",
   "docs": [
     {
-      "id": "ops_pillars",
+      "id": "service_pillars",
       "lang": "en",
-      "title": "OPS Service Pillars",
-      "url": "/ops#pillars",
+      "title": "Service Pillars",
+      "url": "/services#pillars",
       "chunks": [
-        { "id": "ops_pillars_1", "text": "Business Operations: billing, AP/AR, vendor coordination, admin support, marketing." },
-        { "id": "ops_pillars_2", "text": "Contact Center: multichannel support, order rescue, CSAT and SLA discipline." },
-        { "id": "ops_pillars_3", "text": "IT Support: access, setup, incident handling, simple fixes to keep teams productive." },
-        { "id": "ops_pillars_4", "text": "Professionals On Demand: project-based specialists for analysis, finance, HR, and branding." }
+        {
+          "id": "service_pillars_business_ops",
+          "text": "Business Operations: Playbooks that maintain financial hygiene, stakeholder updates, executive-ready dashboards, billing accuracy, revenue protection, and vendor lifecycle visibility."
+        },
+        {
+          "id": "service_pillars_contact_center",
+          "text": "Contact Center (Beta): Relationship-first agents with omni-channel routing, sentiment cues, and knowledge refresh loops tuned to CX goals."
+        },
+        {
+          "id": "service_pillars_it_support",
+          "text": "IT Support (Beta): Incident-ready teams aligning IT and business continuity expectations with documented triage, resolution pathways, and cross-tool visibility."
+        },
+        {
+          "id": "service_pillars_professionals",
+          "text": "Professionals: Insight teams decoding performance data, delivering predictive analytics, sprint-ready insights, and feedback frameworks that prioritize user delight."
+        }
+      ]
+    },
+    {
+      "id": "service_solutions",
+      "lang": "en",
+      "title": "Service Solutions",
+      "url": "/services#solutions",
+      "chunks": [
+        {
+          "id": "service_solutions_business_ops",
+          "text": "Business Operations solution: Accurate billing, clean payables and receivables, vendor coordination, admin support, and marketing execution."
+        },
+        {
+          "id": "service_solutions_contact_center",
+          "text": "Contact Center (Beta) solution: Omni-channel, relationship-driven support focused on rapid resolution and loyalty."
+        },
+        {
+          "id": "service_solutions_it_support",
+          "text": "IT Support (Beta) solution: End-to-end help desk coverage across tiers I and II, ticketing and incident handling from simple to complex fixes with specialized support."
+        },
+        {
+          "id": "service_solutions_professionals",
+          "text": "Professionals On Demand solution: Skilled assistants and specialists ready for temporary or long-term projects, including consultants."
+        }
+      ]
+    },
+    {
+      "id": "engagement_links",
+      "lang": "en",
+      "title": "Engagement Links",
+      "url": "/connect",
+      "chunks": [
+        {
+          "id": "engagement_join",
+          "text": "Join Us: apply via apply.html."
+        },
+        {
+          "id": "engagement_contact",
+          "text": "Contact Us: reach out through contact.html#contact-form."
+        }
       ]
     },
     {
@@ -19,7 +71,10 @@
       "title": "Valores y Señales OPS",
       "url": "/ops#valores",
       "chunks": [
-        { "id": "ops_values_1", "text": "Cobertura confiable, comunicación clara, alcances definidos, y participación flexible." }
+        {
+          "id": "ops_values_1",
+          "text": "Cobertura confiable, comunicación clara, alcances definidos, y participación flexible."
+        }
       ]
     }
   ]
