@@ -16,7 +16,10 @@ const budgetHint = qs('#budgetHint');
 const cookieBanner = qs('#cookieBanner');
 const acceptCookies = qs('#acceptCookies');
 const declineCookies = qs('#declineCookies');
-const copyrightYear = qs('#copyrightYear');
+const dialogTriggers = qsa('[data-dialog-target]');
+const dialogCloseButtons = qsa('[data-dialog-close]');
+const footerCopy = qs('#footerCopy');
+const rightsPrimary = qs('#rightsPrimary');
 
 const consentKey = 'shield.cookies';
 const themeKey = 'shield.theme';
@@ -61,11 +64,12 @@ function translate(key, params){
   return key;
 }
 
-function setLocalizedText(node, key, params){
+function setLocalizedText(node, key, params, { html = false } = {}){
   if (!node) return;
   if (!key){
     delete node.dataset.localeKey;
     delete node.dataset.localeParams;
+    delete node.dataset.localeHtml;
     node.textContent = '';
     if (node === warnEl){
       node.hidden = true;
@@ -89,8 +93,8 @@ function setLocalizedText(node, key, params){
 }
 
 function refreshDynamicLocale(){
-  [statusEl, warnEl].forEach((node) => {
-    if (!node) return;
+  const nodes = document.querySelectorAll('[data-locale-key]');
+  nodes.forEach((node) => {
     const key = node.dataset.localeKey;
     if (!key) return;
     let params;
@@ -101,7 +105,17 @@ function refreshDynamicLocale(){
         params = undefined;
       }
     }
-    node.textContent = translate(key, params);
+    const useHtml = node.dataset.localeHtml === 'true';
+    const text = translate(key, params);
+    if (useHtml){
+      node.innerHTML = text;
+    } else {
+      node.textContent = text;
+    }
+    if (node === warnEl){
+      const content = useHtml ? node.innerHTML : node.textContent;
+      node.hidden = !content;
+    }
   });
 }
 
@@ -228,9 +242,12 @@ function initCookieBanner(){
 }
 
 function initFooter(){
-  if (copyrightYear){
-    const now = new Date();
-    copyrightYear.textContent = String(now.getFullYear());
+  const year = new Date().getFullYear();
+  if (footerCopy){
+    setLocalizedText(footerCopy, 'footer.copy', { year });
+  }
+  if (rightsPrimary){
+    setLocalizedText(rightsPrimary, 'dialogs.rights.body1', { year }, { html: true });
   }
 }
 
@@ -242,6 +259,61 @@ function initBudgetWatcher(){
     const text = Array.from(document.querySelectorAll('.msg.ai')).map((node) => node.textContent || '').join('');
     budgetHint.textContent = String(Math.ceil(text.length / 4));
   }, 800);
+}
+
+const dialogReturnFocus = new WeakMap();
+
+function initDialogs(){
+  dialogTriggers.forEach((trigger, index) => {
+    const targetId = trigger?.dataset?.dialogTarget;
+    if (!targetId) return;
+    const dialog = document.getElementById(targetId);
+    if (!(dialog instanceof HTMLDialogElement)) return;
+
+    if (!trigger.id){
+      trigger.id = `dialog-trigger-${targetId}-${index + 1}`;
+    }
+
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    if (!trigger.hasAttribute('aria-expanded')){
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    trigger.addEventListener('click', () => {
+      dialogReturnFocus.set(dialog, trigger);
+      const handleClose = () => {
+        const opener = dialogReturnFocus.get(dialog) || trigger;
+        dialogReturnFocus.delete(dialog);
+        if (opener){
+          opener.setAttribute('aria-expanded', 'false');
+          opener.focus({ preventScroll: true });
+        }
+      };
+      dialog.addEventListener('close', handleClose, { once: true });
+      trigger.setAttribute('aria-expanded', 'true');
+      if (typeof dialog.showModal === 'function'){
+        dialog.showModal();
+      } else {
+        dialog.show();
+      }
+    });
+  });
+
+  dialogCloseButtons.forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      const dialog = btn.closest('dialog');
+      dialog?.close(btn.value || 'close');
+    });
+  });
+
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog){
+        dialog.close('dismiss');
+      }
+    });
+  });
 }
 
 function bindEvents(){
@@ -290,6 +362,7 @@ function init(){
   }
   initCookieBanner();
   initFooter();
+  initDialogs();
   initBudgetWatcher();
   bindEvents();
 }

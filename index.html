@@ -25,7 +25,7 @@
     <main>
       <section aria-labelledby="chat-title">
         <div class="policy-card">
-          <h2 id="chat-title">Session Console</h2>
+          <h2 id="chat-title" data-i18n="chat.title">Session Console</h2>
           <form id="chatForm" novalidate>
             <div id="chat" class="chat" role="log" aria-live="polite"></div>
             <div class="bar">
@@ -59,9 +59,30 @@
 
     <footer>
       <nav class="footer-links" aria-label="Compliance policies and legal notices">
-        <button type="button" class="footer-link" data-dialog-target="cookieDialog">Cookie Consent</button>
-        <button type="button" class="footer-link" data-dialog-target="termsDialog">Terms &amp; Conditions</button>
-        <button type="button" class="footer-link" data-dialog-target="rightsDialog">Trademark &amp; Copyright</button>
+        <button
+          type="button"
+          class="footer-link"
+          data-dialog-target="cookieDialog"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          data-i18n="footer.cookieLink"
+        >Cookie Consent</button>
+        <button
+          type="button"
+          class="footer-link"
+          data-dialog-target="termsDialog"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          data-i18n="footer.termsLink"
+        >Terms &amp; Conditions</button>
+        <button
+          type="button"
+          class="footer-link"
+          data-dialog-target="rightsDialog"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          data-i18n="footer.rightsLink"
+        >Trademark &amp; Copyright</button>
       </nav>
       <p class="footer-copy" id="footerCopy"></p>
     </footer>
@@ -70,33 +91,54 @@
   <dialog id="cookieDialog" class="policy-dialog" aria-labelledby="cookieDialogTitle">
     <form method="dialog" class="policy-dialog__content">
       <header>
-        <h2 id="cookieDialogTitle">Cookie Consent</h2>
-        <button type="submit" class="dialog-close" value="close" aria-label="Close" data-dialog-close>×</button>
+        <h2 id="cookieDialogTitle" data-i18n="dialogs.cookie.title">Cookie Consent</h2>
+        <button
+          type="submit"
+          class="dialog-close"
+          value="close"
+          aria-label="Close"
+          data-dialog-close
+          data-i18n-attrs="aria-label:dialogs.close"
+        >×</button>
       </header>
-      <p>We only deploy essential cookies required to secure the session, detect abuse, and remember your accessibility preferences. Analytics are aggregated, anonymous, and never include personal identifiers.</p>
-      <p>Your chat content remains local-first unless policy escalates it to protected infrastructure. Declining optional cookies keeps the experience functional without personalization.</p>
+      <p data-i18n="dialogs.cookie.body1">We only deploy essential cookies required to secure the session, detect abuse, and remember your accessibility preferences. Analytics are aggregated, anonymous, and never include personal identifiers.</p>
+      <p data-i18n="dialogs.cookie.body2">Your chat content remains local-first unless policy escalates it to protected infrastructure. Declining optional cookies keeps the experience functional without personalization.</p>
     </form>
   </dialog>
 
   <dialog id="termsDialog" class="policy-dialog" aria-labelledby="termsDialogTitle">
     <form method="dialog" class="policy-dialog__content">
       <header>
-        <h2 id="termsDialogTitle">Terms &amp; Conditions</h2>
-        <button type="submit" class="dialog-close" value="close" aria-label="Close" data-dialog-close>×</button>
+        <h2 id="termsDialogTitle" data-i18n="dialogs.terms.title">Terms &amp; Conditions</h2>
+        <button
+          type="submit"
+          class="dialog-close"
+          value="close"
+          aria-label="Close"
+          data-dialog-close
+          data-i18n-attrs="aria-label:dialogs.close"
+        >×</button>
       </header>
-      <p>By engaging with this assistant you agree to follow acceptable use rules, refrain from submitting malicious or regulated data, and respect all confidentiality markings produced by the system.</p>
-      <p>Service is provided on an “as-is” basis without warranties. Availability targets follow PCI DSS operational practices and disputes are governed by the applicable laws of your jurisdiction.</p>
+      <p data-i18n="dialogs.terms.body1">By engaging with this assistant you agree to follow acceptable use rules, refrain from submitting malicious or regulated data, and respect all confidentiality markings produced by the system.</p>
+      <p data-i18n="dialogs.terms.body2">Service is provided on an “as-is” basis without warranties. Availability targets follow PCI DSS operational practices and disputes are governed by the applicable laws of your jurisdiction.</p>
     </form>
   </dialog>
 
   <dialog id="rightsDialog" class="policy-dialog" aria-labelledby="rightsDialogTitle">
     <form method="dialog" class="policy-dialog__content">
       <header>
-        <h2 id="rightsDialogTitle">Trademark &amp; Copyright</h2>
-        <button type="submit" class="dialog-close" value="close" aria-label="Close" data-dialog-close>×</button>
+        <h2 id="rightsDialogTitle" data-i18n="dialogs.rights.title">Trademark &amp; Copyright</h2>
+        <button
+          type="submit"
+          class="dialog-close"
+          value="close"
+          aria-label="Close"
+          data-dialog-close
+          data-i18n-attrs="aria-label:dialogs.close"
+        >×</button>
       </header>
-      <p>&copy; <span id="copyrightYear"></span> ShieldOps Consortium. All rights reserved. ShieldOps, the Shield insignia, and related marks are protected trademarks.</p>
-      <p>Unauthorized reproduction, redistribution, or modification of platform assets is prohibited. Third-party names remain the property of their respective owners and are referenced solely for identification.</p>
+      <p id="rightsPrimary">© <span id="copyrightYear"></span> ShieldOps Consortium. All rights reserved. ShieldOps, the Shield insignia, and related marks are protected trademarks.</p>
+      <p data-i18n="dialogs.rights.body2">Unauthorized reproduction, redistribution, or modification of platform assets is prohibited. Third-party names remain the property of their respective owners and are referenced solely for identification.</p>
     </form>
   </dialog>
 
