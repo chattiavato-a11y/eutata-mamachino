@@ -5,6 +5,7 @@
   --muted:#a9b0b8;
   --accent:#6ad1ff;
   --ring:rgba(106,209,255,.35);
+  --focus-ring:#6ad1ff;
   color-scheme: dark;
 }
 [data-theme="light"]{
@@ -14,6 +15,7 @@
   --muted:#536070;
   --accent:#0077ff;
   --ring:rgba(0,119,255,.25);
+  --focus-ring:#005fcc;
   color-scheme: light;
 }
 *{
@@ -67,9 +69,11 @@ select:hover{
 }
 button:focus-visible,
 select:focus-visible,
-textarea:focus-visible{
-  outline:3px solid var(--accent);
-  outline-offset:2px;
+textarea:focus-visible,
+summary:focus-visible,
+a:focus-visible{
+  outline:3px solid var(--focus-ring);
+  outline-offset:3px;
 }
 .chat{
   background:var(--card);

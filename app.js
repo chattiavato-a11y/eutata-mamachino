@@ -19,7 +19,7 @@ import { routeChat } from './packs/l6_orchestrator.js';
   const themeKey = 'shield.theme';
   const langKey = 'shield.lang';
 
-  const safeGet = (key) => {
+  const safeGet = (key, storage = window.localStorage) => {
     try {
       return window.localStorage.getItem(key);
     } catch (err) {
@@ -28,7 +28,7 @@ import { routeChat } from './packs/l6_orchestrator.js';
     }
   };
 
-  const safeSet = (key, value) => {
+  const safeSet = (key, value, storage = window.localStorage) => {
     try {
       window.localStorage.setItem(key, value);
     } catch (err) {
@@ -36,12 +36,71 @@ import { routeChat } from './packs/l6_orchestrator.js';
     }
   };
 
-  const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+  const detectPreferredTheme = () => {
+    const stored = safeGet(themeKey, window.sessionStorage);
+    if (stored === 'light' || stored === 'dark'){
+      return stored;
+    }
+    if (typeof window.matchMedia === 'function'){
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'dark';
+  };
+
+  const detectPreferredLanguage = () => {
+    const stored = safeGet(langKey, window.sessionStorage);
+    return stored === 'es' ? 'es' : 'en';
+  };
+
+  const translations = {
+    en: {
+      headerTitle: 'OPS Chat Interface',
+      themeLabel: 'Theme',
+      themeButtonLight: 'Light',
+      themeButtonDark: 'Dark',
+      themeToggleToLight: 'Switch to light theme',
+      themeToggleToDark: 'Switch to dark theme',
+      langLabel: 'Language',
+      languageOptionEn: 'English',
+      languageOptionEs: 'Spanish',
+      send: 'Send',
+      messageLabel: 'Chat message',
+      messagePlaceholder: 'Type a message…',
+      statusReady: 'Ready.',
+      statusConnecting: 'Connecting…',
+      statusStreaming: 'Streaming…',
+      statusStartError: 'Error starting stream.',
+      statusNetworkError: 'Network error.',
+      warnBlocked: (reasons) => `Blocked by client Shield. Reasons: ${reasons.join(', ')}`,
+    },
+    es: {
+      headerTitle: 'Interfaz de chat OPS',
+      themeLabel: 'Tema',
+      themeButtonLight: 'Claro',
+      themeButtonDark: 'Oscuro',
+      themeToggleToLight: 'Cambiar a tema claro',
+      themeToggleToDark: 'Cambiar a tema oscuro',
+      langLabel: 'Idioma',
+      languageOptionEn: 'Inglés',
+      languageOptionEs: 'Español',
+      send: 'Enviar',
+      messageLabel: 'Mensaje del chat',
+      messagePlaceholder: 'Escribe un mensaje…',
+      statusReady: 'Listo.',
+      statusConnecting: 'Conectando…',
+      statusStreaming: 'Transmitiendo…',
+      statusStartError: 'Error al iniciar la transmisión.',
+      statusNetworkError: 'Error de red.',
+      warnBlocked: (reasons) => `Bloqueado por Shield del cliente. Motivos: ${reasons.join(', ')}`,
+    },
+  };
+
+  const getStrings = () => translations[state.lang] || translations.en;
 
   const state = {
     messages: [],
-    lang: safeGet(langKey) || 'en',
-    theme: safeGet(themeKey) || (prefersLight ? 'light' : 'dark'),
+    lang: 'en',
+    theme: 'dark',
     csrf: Shield.csrfToken(),
   };
 
@@ -393,11 +452,11 @@ import { routeChat } from './packs/l6_orchestrator.js';
       });
 
       if (!res.ok || !res.body){
-        status.textContent = 'Error starting stream.';
+        setStatus('statusStartError');
         return;
       }
 
-      status.textContent = 'Streaming…';
+      setStatus('statusStreaming');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       const aiEl = addMessage('assistant', '');
@@ -464,11 +523,11 @@ import { routeChat } from './packs/l6_orchestrator.js';
         }
       }
 
-      status.textContent = 'Ready.';
+      setStatus('statusReady');
       state.messages.push({role: 'assistant', content: aiText});
     } catch (err){
       console.error('Chat error', err);
-      status.textContent = 'Network error.';
+      setStatus('statusNetworkError');
     }
   };
 

@@ -34,15 +34,15 @@
   <div class="wrap">
     <header>
       <div>
-        <h1>OPS Chat Interface</h1>
+        <h1 data-i18n="headerTitle">OPS Chat Interface</h1>
       </div>
       <div class="toggles" role="group" aria-label="Display and language settings">
-        <label for="themeBtn" class="muted">Theme</label>
+        <label for="themeBtn" class="muted" data-i18n="themeLabel">Theme</label>
         <button id="themeBtn" type="button" aria-pressed="true">Dark</button>
-        <label for="langSel" class="muted">Lang</label>
+        <label for="langSel" class="muted" data-i18n="langLabel">Language</label>
         <select id="langSel" aria-label="Language selector">
-          <option value="en" selected>EN</option>
-          <option value="es">ES</option>
+          <option value="en" selected>English</option>
+          <option value="es">Español</option>
         </select>
       </div>
     </header>
@@ -54,7 +54,7 @@
           <form id="chatForm" novalidate>
             <div id="chat" class="chat" role="log" aria-live="polite"></div>
             <div class="bar">
-              <label class="visually-hidden" for="input">Chat message</label>
+              <label class="visually-hidden" for="input" data-i18n="messageLabel">Chat message</label>
               <textarea id="input" placeholder="Type a message…" aria-label="Message input"></textarea>
               <button id="micBtn" type="button" class="mic-btn" aria-pressed="false" aria-label="Start voice input" disabled>
                 <span aria-hidden="true">🎤</span>
