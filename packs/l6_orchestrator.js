@@ -5,6 +5,38 @@
 import { L5Local } from './l5_local_llm.js';
 import { WebLLM } from './l5_webllm.js';
 
+const translate = (lang, key, params) => {
+  const api = window.I18N;
+  if (api && typeof api.t === 'function'){
+    return api.t(lang, key, params);
+  }
+  return key;
+};
+
+const setText = (node, lang, key, params) => {
+  if (!node) return;
+  if (!key){
+    delete node.dataset.localeKey;
+    delete node.dataset.localeParams;
+    node.textContent = '';
+    return;
+  }
+  node.dataset.localeKey = key;
+  if (params && Object.keys(params).length){
+    try {
+      node.dataset.localeParams = JSON.stringify(params);
+    } catch {
+      node.dataset.localeParams = '';
+    }
+  } else {
+    delete node.dataset.localeParams;
+  }
+  node.textContent = translate(lang, key, params);
+};
+
+const setStatus = (ui, lang, key, params) => setText(ui?.statusEl, lang, key, params);
+const setWarn = (ui, lang, key, params) => setText(ui?.warnEl, lang, key, params);
+
 const Budget = {
   soft: 75000,
   hard: 100000,
@@ -14,91 +46,31 @@ const Budget = {
   note(n){ this.spent += Math.max(0, n|0); }
 };
 
-const sanitizeText = (()=>{
-  if (typeof window !== 'undefined' && window.Shield && typeof window.Shield.baseSanitize === 'function'){
-    return (value)=>window.Shield.baseSanitize(value || '');
-  }
-  return (value)=>String(value||'');
-})();
-
-const createGuardrails = () => ({
-  warnings: [],
-  notices: [],
-  flags: [],
-  budget: { softExceeded:false, hardExceeded:false },
-  blocked:false
-});
-
-const mergeGuardrails = (target, next) => {
-  if (!next) return target;
-  if (Array.isArray(next.warnings)) target.warnings.push(...next.warnings);
-  if (Array.isArray(next.notices)) target.notices.push(...next.notices);
-  if (Array.isArray(next.flags)) target.flags.push(...next.flags);
-  if (next.budget){
-    target.budget.softExceeded = target.budget.softExceeded || !!next.budget.softExceeded;
-    target.budget.hardExceeded = target.budget.hardExceeded || !!next.budget.hardExceeded;
-  }
-  if (next.blocked) target.blocked = true;
-  return target;
-};
-
-const applyStatus = (ui, message) => {
-  const safe = sanitizeText(message);
-  if (ui?.setStatus){
-    ui.setStatus(safe);
-  } else if (ui?.statusEl){
-    ui.statusEl.textContent = safe;
-    if (ui.statusEl.dataset) ui.statusEl.dataset.active = safe ? 'true' : 'false';
-  }
-  return safe;
-};
-
-const applyWarn = (ui, message, level='warning') => {
-  const safe = sanitizeText(message);
-  if (ui?.setWarn){
-    ui.setWarn(safe, level);
-  } else if (ui?.warnEl){
-    ui.warnEl.textContent = safe;
-    if (ui.warnEl.dataset) ui.warnEl.dataset.level = safe ? level : '';
-  }
-  return safe;
-};
-
-const pushWarning = (state, ui, message, level='warning') => {
-  const safe = sanitizeText(message);
-  if (!safe) return null;
-  if (!state.warnings.some(w => w.message === safe && w.level === level)){
-    state.warnings.push({ message: safe, level });
-  }
-  applyWarn(ui, message, level);
-  return safe;
-};
-
-const clearWarnings = (ui) => {
-  applyWarn(ui, '', '');
-};
-
-const parseGuardPayload = (raw) => {
-  const trimmed = (raw||'').trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('{')){
-    try { return JSON.parse(trimmed); }
-    catch { return null; }
-  }
-  return null;
-};
-
-const resolveAssistantText = (payload) => {
-  if (typeof payload === 'string') return payload;
-  if (payload && typeof payload === 'object'){
-    if (typeof payload.text === 'string') return payload.text;
-    if (typeof payload.output === 'string') return payload.output;
-    if (Array.isArray(payload.choices) && payload.choices[0] && typeof payload.choices[0].text === 'string'){
-      return payload.choices[0].text;
+function createGuardEmitter(ui, { onGuardrailWarning, onGuardrailError } = {}){
+  const warnEl = ui?.warnEl;
+  const update = (level, message) => {
+    if (warnEl){
+      const text = message || '';
+      warnEl.textContent = text;
+      warnEl.hidden = !text;
+      if (text){
+        warnEl.dataset.severity = level;
+      } else {
+        warnEl.removeAttribute?.('data-severity');
+      }
     }
-  }
-  return '';
-};
+    if (level === 'error'){
+      onGuardrailError?.(message || '');
+    } else {
+      onGuardrailWarning?.(message || '');
+    }
+  };
+  return {
+    warn(message){ update('warn', message); },
+    error(message){ update('error', message); },
+    clear(){ update('warn', ''); update('error', ''); }
+  };
+}
 
 function groundedSystem({ lang, strong }){
   const ctx = (strong||[]).map(t => `[#${t.id}] ${t.text}`).join('\n');
@@ -125,11 +97,11 @@ async function deriveStrong({ query, lang }){
 
 // Try local extractive (L5). Returns {ok, text} or {ok:false}
 async function tryExtractive({ query, lang, ui }){
-  const guardrails = createGuardrails();
-  applyStatus(ui, 'Thinking locally…');
+  setStatus(ui, lang, 'status.thinkingLocal');
   const text = await L5Local.draft({ query, lang, bm25Min:0.6, coverageNeeded:2 });
-  if (!text) return { ok:false, guardrails };
-  applyStatus(ui, 'Streaming (local)…');
+  if (!text) return { ok:false };
+  // stream locally (simulated) and budget
+  setStatus(ui, lang, 'status.streamingLocal');
   const aiEl = ui.addMsg('assistant','');
   let i=0;
   const finish = () => {
@@ -141,6 +113,10 @@ async function tryExtractive({ query, lang, ui }){
     if (i < text.length){
       const chunk = text[i++]; aiEl.textContent += chunk; ui.chatEl.scrollTop = ui.chatEl.scrollHeight;
       return setTimeout(step, 8);
+    } else {
+      const toks = Budget.approxTokens(text); Budget.note(toks);
+      setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
+      return;
     }
     finish();
   };
@@ -149,18 +125,20 @@ async function tryExtractive({ query, lang, ui }){
 }
 
 // Try WebLLM on GPU (only if low confidence)
-async function tryWebGPU({ query, lang, ui, modelId }){
-  const guardrails = createGuardrails();
-  applyStatus(ui, 'Loading local model…');
+async function tryWebGPU({ query, lang, ui, modelId, guard }){
+  ui.statusEl.textContent = 'Loading local model…';
   await WebLLM.load({
     model: modelId || 'Llama-3.1-8B-Instruct-q4f16_1',
-    progress: (p)=>{ applyStatus(ui, `Loading local model… ${Math.round((p?.progress||0)*100)}%`); }
+    progress: (p)=>{
+      const percent = Math.round((p?.progress||0)*100);
+      setStatus(ui, lang, 'status.loadingLocalModelProgress', { percent });
+    }
   });
 
   const strong = await deriveStrong({ query, lang });
   const sys = groundedSystem({ lang, strong });
 
-  applyStatus(ui, 'Streaming (local GPU)…');
+  setStatus(ui, lang, 'status.streamingLocalGpu');
   const aiEl = ui.addMsg('assistant','');
   let tokensStreamed = 0;
   let budgetWarned = false;
@@ -184,37 +162,21 @@ async function tryWebGPU({ query, lang, ui, modelId }){
     }
   });
   Budget.note(tokensStreamed);
-  applyStatus(ui, `Ready. (≈${Budget.spent} tokens)`);
-  if (ui?.focusAssistant) ui.focusAssistant(aiEl);
-  return { text: out, guardrails };
+  setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
+  return out;
 }
 
 // Server fallback (/api/chat) with budget guard
-async function tryServer({ state, ui }){
-  const guardrails = createGuardrails();
-  applyStatus(ui,'Connecting…');
-  let res;
-  try {
-    res = await fetch('/api/chat', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json','X-CSRF':state.csrf, 'X-Session-Tokens-Spent': String(Budget.spent) },
-      body: JSON.stringify({ messages: state.messages.slice(-16), lang: state.lang, csrf: state.csrf, hp: state.hp||'' })
-    });
-  } catch (err){
-    applyStatus(ui,'Network error.');
-    guardrails.blocked = true;
-    pushWarning(guardrails, ui, 'Unable to contact the server.', 'error');
-    return { text:'', guardrails };
-  }
+async function tryServer({ state, ui, guard }){
+  ui.statusEl.textContent='Connecting…';
+  const res = await fetch('/api/chat', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json','X-CSRF':state.csrf, 'X-Session-Tokens-Spent': String(Budget.spent) },
+    body: JSON.stringify({ messages: state.messages.slice(-16), lang: state.lang, csrf: state.csrf, hp: state.hp||'' })
+  });
+  if (!res.ok || !res.body){ setStatus(ui, lang, 'status.serverError'); return ''; }
 
-  if (!res.ok || !res.body){
-    applyStatus(ui,'Server error.');
-    guardrails.blocked = true;
-    pushWarning(guardrails, ui, 'Upstream response unavailable.', 'error');
-    return { text:'', guardrails };
-  }
-
-  applyStatus(ui,'Streaming…');
+  setStatus(ui, lang, 'status.streaming');
   const reader=res.body.getReader(); const dec=new TextDecoder();
   const aiEl=ui.addMsg('assistant',''); let text='';
   let budgetWarned=false;
@@ -223,73 +185,54 @@ async function tryServer({ state, ui }){
     const chunk=dec.decode(value,{stream:true});
     for (const line of chunk.split('\n')){
       if(!line.startsWith('data: ')) continue;
-      const data=line.slice(6);
-      if(!data) continue;
-      if(data==='[END]') continue;
-
-      if (data.startsWith('[WARN]')){
-        pushWarning(guardrails, ui, data.replace('[WARN]','').trim(), 'warning');
-        continue;
-      }
-      if (data.startsWith('[ERROR]')){
-        guardrails.blocked = true;
-        pushWarning(guardrails, ui, data.replace('[ERROR]','').trim(), 'error');
-        continue;
-      }
-
-      const payload = parseGuardPayload(data);
-      if (payload){
-        if (typeof payload.status === 'string') applyStatus(ui, payload.status);
-        if (payload.guardrail){
-          const { level='warning', message='', code, blocked } = payload.guardrail;
-          if (code) guardrails.flags.push(code);
-          if (message) pushWarning(guardrails, ui, message, level);
-          if (blocked) guardrails.blocked = true;
-        }
-        const token = typeof payload.token === 'string' ? payload.token : (typeof payload.text === 'string' ? payload.text : '');
-        if (token){
-          const tokenCost = Budget.approxTokens(token);
-          if (!Budget.canSpend(tokenCost)){
-            guardrails.budget.hardExceeded = true;
-            guardrails.blocked = true;
-            if (!budgetWarned){ pushWarning(guardrails, ui, 'Session token cap reached.', 'error'); budgetWarned=true; }
-            continue;
+      const data=line.slice(6); if(data==='[END]') break;
+      const trimmed = data.trim();
+      if (trimmed.startsWith('{')){
+        try {
+          const payload = JSON.parse(trimmed);
+          if (payload && typeof payload === 'object'){
+            const guardLevel = (payload.level || payload.severity || (payload.error && 'error') || (payload.warning && 'warn') || (payload.guard && payload.guard.level) || '').toLowerCase();
+            const guardMessage = payload.message || payload.text || payload.warning || payload.error || payload.reason || '';
+            const guardType = (payload.type || payload.kind || payload.guard || payload.guardrail || '').toString().toLowerCase();
+            if (guardLevel || guardMessage || guardType === 'guard'){
+              if ((guardLevel || guardType) === 'error'){
+                guard?.error?.(guardMessage);
+              } else {
+                guard?.warn?.(guardMessage);
+              }
+              continue;
+            }
           }
-          text+=token; aiEl.textContent=text; ui.chatEl.scrollTop=ui.chatEl.scrollHeight;
-          Budget.note(tokenCost);
+        } catch {
+          // fall through if JSON parse fails
         }
-        continue;
       }
-
-      const tokenCost = Budget.approxTokens(data);
-      if (!Budget.canSpend(tokenCost)){
-        guardrails.budget.hardExceeded = true;
-        guardrails.blocked = true;
-        if (!budgetWarned){ pushWarning(guardrails, ui, 'Session token cap reached.', 'error'); budgetWarned=true; }
+      // budget guard on server stream too
+      const approx = Budget.approxTokens(data);
+      if (!Budget.canSpend(approx)) {
+        guard?.warn?.('Session token cap reached.');
         continue;
       }
       text+=data; aiEl.textContent=text; ui.chatEl.scrollTop=ui.chatEl.scrollHeight;
-      Budget.note(tokenCost);
+      Budget.note(approx);
     }
   }
-  applyStatus(ui,`Ready. (≈${Budget.spent} tokens)`);
-  if (ui?.focusAssistant) ui.focusAssistant(aiEl);
-  return { text, guardrails };
+  setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
+  return text;
 }
 
-export async function routeChat({ ui, state }){
+export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailError } = {}){
+  const guard = createGuardEmitter(ui, { onGuardrailWarning, onGuardrailError });
+  guard.clear?.();
   const mode = state.mode || 'hybrid'; // 'local' | 'hybrid' | 'external'
   const lastUser = state.messages.filter(m=>m.role==='user').slice(-1)[0];
   const query = lastUser?.content || '';
-  const guardrails = createGuardrails();
-  const result = { source:'none', guardrails };
+  const lang = state.lang || 'en';
 
   // Hard budget check upfront
   if (!Budget.canSpend(1)){
-    guardrails.budget.hardExceeded = true;
-    guardrails.blocked = true;
-    pushWarning(guardrails, ui, 'Session token cap reached (100k).', 'error');
-    return result;
+    guard.warn('Session token cap reached (100k).');
+    return;
   }
 
   clearWarnings(ui);
@@ -300,10 +243,7 @@ export async function routeChat({ ui, state }){
   if (ex.ok){
     state.messages.push({role:'assistant', content: ex.text});
     if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
-      guardrails.budget.softExceeded = true;
-      pushWarning(guardrails, ui, 'You are over the soft token cap (75k). Further generation will slow/trim.', 'warning');
-    } else {
-      clearWarnings(ui);
+      guard.warn('You are over the soft token cap (75k). Further generation will slow/trim.');
     }
     return { source:'extractive', guardrails };
   }
@@ -311,44 +251,33 @@ export async function routeChat({ ui, state }){
   // 2) Low confidence → try WebLLM/WebGPU if allowed by mode and GPU is available and budget permits
   if (mode !== 'external' && WebLLM.hasWebGPU() && Budget.canSpend(500)){ // need headroom
     try {
-      const web = await tryWebGPU({ query, lang: state.lang, ui, modelId: state.webllmModel });
-      mergeGuardrails(guardrails, web.guardrails);
-      const text = resolveAssistantText(web.text);
+      const text = await tryWebGPU({ query, lang: state.lang, ui, modelId: state.webllmModel, guard });
       if (text){
         state.messages.push({role:'assistant', content: text});
         if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
-          guardrails.budget.softExceeded = true;
-          pushWarning(guardrails, ui, 'Soft cap exceeded (75k).', 'warning');
+          guard.warn('Soft cap exceeded (75k).');
         }
         return { source:'webgpu', guardrails };
       }
     } catch (e){
       // ignore and drop to server path
-      const msg = (String(e?.message||e).toLowerCase().includes('webgpu'))
+      const message = (String(e?.message||e).includes('webgpu'))
         ? 'WebGPU unavailable; using server fallback.'
         : 'Local model not available; using server fallback.';
-      pushWarning(guardrails, ui, msg, 'warning');
+      guard.warn(message);
     }
   }
 
   // 3) Server fallback if mode allows
   if (mode !== 'local'){
-    if (!Budget.canSpend(1000)){
-      guardrails.budget.hardExceeded = true;
-      guardrails.blocked = true;
-      pushWarning(guardrails, ui, 'Insufficient budget for server call.', 'error');
-      return { source:'blocked', guardrails };
-    }
-    const server = await tryServer({ state, ui });
-    mergeGuardrails(guardrails, server.guardrails);
-    const text = resolveAssistantText(server.text);
+    if (!Budget.canSpend(1000)){ guard.warn('Insufficient budget for server call.'); return; }
+    const text = await tryServer({ state, ui, guard });
     if (text) state.messages.push({role:'assistant', content: text});
     if (!guardrails.warnings.length) clearWarnings(ui);
     return { source:'server', guardrails };
   }
 
   // 4) Local-only and nothing worked
-  applyStatus(ui, 'No local answer available.');
-  return result;
+  setStatus(ui, lang, 'status.noLocalAnswer');
 }
 
