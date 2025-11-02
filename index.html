@@ -4,8 +4,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Chat · Local-first with WebGPU fallback</title>
 <style>
-  :root{ --bg:#0b0c10; --card:#121319; --ink:#e6e6e6; --muted:#a9b0b8; --accent:#6ad1ff; --ring:rgba(106,209,255,.35); }
-  [data-theme="light"]{ --bg:#ffffff; --card:#f5f7fb; --ink:#1f2430; --muted:#536070; --accent:#0077ff; --ring:rgba(0,119,255,.25); }
+  :root{ --bg:#0b0c10; --card:#121319; --ink:#e6e6e6; --muted:#a9b0b8; --accent:#6ad1ff; --ring:rgba(106,209,255,.35); --status-color:#6ad1ff; --status-bg:rgba(106,209,255,.12); --warn-color:#ff7b7b; --warn-bg:rgba(255,123,123,.12); --warn-border:rgba(255,123,123,.45); }
+  [data-theme="light"]{ --bg:#ffffff; --card:#f5f7fb; --ink:#1f2430; --muted:#536070; --accent:#0077ff; --ring:rgba(0,119,255,.25); --status-color:#0058cc; --status-bg:rgba(0,88,204,.14); --warn-color:#b00020; --warn-bg:rgba(176,0,32,.12); --warn-border:rgba(176,0,32,.4); }
   body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial;}
   .wrap{max-width:900px;margin:0 auto;padding:20px}
   header{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap}
@@ -20,7 +20,13 @@
   .bar{display:flex;gap:8px;margin-top:10px}
   .bar textarea{flex:1;min-height:44px;max-height:160px;resize:vertical;background:var(--card);color:var(--ink);border:1px solid #242634;border-radius:10px;padding:10px}
   .muted{color:var(--muted);font-size:12px}
-  .bad{color:#ff7b7b}
+  .bad{color:var(--warn-color)}
+  .status-message{color:var(--status-color);background:var(--status-bg);border-radius:10px;padding:8px 12px;font-size:13px;margin-top:6px;min-height:18px}
+  .status-message[data-active="false"]{opacity:.7}
+  .warn-message{color:var(--warn-color);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:10px;padding:8px 12px;font-size:13px;margin-top:8px}
+  .warn-message[data-level=""]{display:none}
+  .msg.ai:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;border:0!important;white-space:nowrap!important}
 </style>
 
 <body>
@@ -51,8 +57,9 @@
               <textarea id="input" placeholder="Type a message…" aria-label="Message input"></textarea>
               <button id="send" type="submit">Send</button>
             </div>
-            <div class="muted" id="status" role="status" aria-live="polite"></div>
-            <div class="bad" id="warn" role="alert"></div>
+            <p id="assistantNavHint" class="visually-hidden">Press Escape to return to the composer after reviewing the latest assistant message.</p>
+            <div class="muted status-message" id="status" role="status" aria-live="polite" data-active="false"></div>
+            <div class="bad warn-message" id="warn" role="alert" aria-live="assertive" data-level=""></div>
           </form>
         </div>
       </section>
@@ -116,6 +123,28 @@ const chat=qs('#chat'), inp=qs('#input'), send=qs('#send'), status=qs('#status')
 const langSel=qs('#langSel'); const themeBtn=qs('#themeBtn'); const form=qs('#chatForm');
 const modeSel=qs('#modeSel'); const budgetHint=qs('#budgetHint');
 
+const sanitizeForUi=(value)=>{
+  try {
+    const win = (typeof window !== 'undefined') ? window : undefined;
+    const fn = win?.Shield?.baseSanitize;
+    const sanitize = (typeof fn === 'function') ? fn : ((v)=>String(v||''));
+    return sanitize(value||'');
+  }
+  catch { return String(value||''); }
+};
+
+const setStatus=(message)=>{
+  const safe=sanitizeForUi(message);
+  status.textContent=safe;
+  status.dataset.active=safe? 'true':'false';
+};
+
+const setWarn=(message, level='warning')=>{
+  const safe=sanitizeForUi(message);
+  warn.textContent=safe;
+  warn.dataset.level=safe? level:'';
+};
+
 // Honeypot + state
 const hpInput = (()=>{ const hp=document.createElement('input'); hp.type='text'; hp.name='hp';
   hp.tabIndex=-1; hp.ariaHidden='true'; hp.style.cssText='position:absolute;left:-5000px;width:1px;height:1px;opacity:0;'; form.appendChild(hp); return hp; })();
@@ -125,8 +154,35 @@ const state={ messages:[], lang:'en', theme:'dark', csrf: csrfToken(), hp:'', mo
 function csrfToken(){ const k='shield.csrf'; let t=sessionStorage.getItem(k); if(!t){ t=randomId(24); sessionStorage.setItem(k,t);} return t; }
 function randomId(len=22){ const abc='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-'; let s=''; for(let i=0;i<len;i++) s+=abc[Math.floor(Math.random()*abc.length)]; return s; }
 
-function addMsg(role, text){ const d=document.createElement('div'); d.className='msg '+(role==='user'?'me':'ai');
-  d.textContent=text; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; return d; }
+function addMsg(role, text){
+  const isUser=role==='user';
+  const d=document.createElement('div');
+  d.className='msg '+(isUser?'me':'ai');
+  d.textContent=text;
+  if(!isUser){
+    d.tabIndex=-1;
+    d.setAttribute('role','article');
+    d.setAttribute('aria-live','polite');
+    d.setAttribute('aria-describedby','assistantNavHint');
+    d.addEventListener('keydown',(ev)=>{
+      if(ev.key==='Escape'){
+        ev.preventDefault();
+        inp.focus();
+      }
+    });
+  }
+  chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
+  return d;
+}
+
+const focusAssistantBubble=(node)=>{
+  if(!node||!node.classList.contains('ai')) return;
+  requestAnimationFrame(()=>{
+    try{ node.focus({ preventScroll:false }); }
+    catch{ node.focus(); }
+  });
+};
 
 themeBtn.onclick=()=>{ state.theme = state.theme==='dark'?'light':'dark';
   document.documentElement.dataset.theme=state.theme; themeBtn.textContent=state.theme[0].toUpperCase()+state.theme.slice(1); };
@@ -155,17 +211,40 @@ function scanAndSanitize(input, maxLen=2000){
 
 async function sendMsg(){
   const raw=(inp.value||'').trim(); if(!raw) return;
-  const v1=scanAndSanitize(raw); if(!v1.ok){ warn.textContent='Blocked input.'; return; }
-  warn.textContent=''; addMsg('user', v1.sanitized);
-  state.messages.push({role:'user', content:v1.sanitized, lang: state.lang}); inp.value='';
+  const v1=scanAndSanitize(raw); if(!v1.ok){ setWarn('Blocked input.','error'); return; }
+  setWarn('',''); addMsg('user', v1.sanitized);
+  state.messages.push({role:'user', content:v1.sanitized, lang: state.lang}); inp.value=''; inp.focus();
 
-  await routeChat({
+  const result = await routeChat({
     state: { ...state, hp: hpInput.value||'' },
-    ui: { chatEl:chat, warnEl:warn, statusEl:status, addMsg }
+    ui: {
+      chatEl:chat,
+      warnEl:warn,
+      statusEl:status,
+      addMsg,
+      focusAssistant:focusAssistantBubble,
+      setStatus,
+      setWarn
+    }
   });
+
+  if(result?.guardrails?.warnings?.length){
+    const latest=result.guardrails.warnings[result.guardrails.warnings.length-1];
+    if(latest?.message) setWarn(latest.message, latest.level||'warning');
+  } else {
+    setWarn('','');
+  }
 }
 
-  <script src="./shield.js" defer></script>
-  <script src="./app.js" defer></script>
+form?.addEventListener('submit',(ev)=>{ ev.preventDefault(); sendMsg(); });
+send?.addEventListener('click',(ev)=>{ ev.preventDefault(); sendMsg(); });
+inp?.addEventListener('keydown',(ev)=>{
+  if(ev.key==='Enter' && !ev.shiftKey){
+    ev.preventDefault();
+    sendMsg();
+  }
+});
+</script>
+<script src="./app.js" defer></script>
 </body>
 </html>
