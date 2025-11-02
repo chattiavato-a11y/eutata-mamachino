@@ -12,6 +12,9 @@ const form = qs('#chatForm');
 const modeSelectors = qsa('[data-action="select-mode"]');
 const langSelectors = qsa('[data-action="select-language"]');
 const themeButtons = qsa('[data-action="toggle-theme"]');
+const micBtn = qs('#micBtn');
+const voiceStatus = qs('#voiceStatus');
+const micLabel = micBtn ? micBtn.querySelector('[data-role="mic-label"]') : null;
 const budgetHint = qs('#budgetHint');
 const cookieBanner = qs('#cookieBanner');
 const acceptCookies = qs('#acceptCookies');
@@ -54,6 +57,13 @@ const state = {
 
 const honeypotField = form && window.Shield.attachHoneypot ? window.Shield.attachHoneypot(form) : null;
 
+let audioModulePromise = null;
+let audioModule = null;
+let stopListening = null;
+let isRecording = false;
+let lastSpokenText = '';
+const voicePreviewLimit = 80;
+
 function translate(key, params){
   if (window.I18N && typeof window.I18N.t === 'function'){
     return window.I18N.t(state.lang, key, params);
@@ -83,7 +93,7 @@ function setLocalizedText(node, key, params){
 }
 
 function refreshDynamicLocale(){
-  [statusEl, warnEl].forEach((node) => {
+  [statusEl, warnEl, voiceStatus, micLabel].forEach((node) => {
     if (!node) return;
     const key = node.dataset.localeKey;
     if (!key) return;
@@ -97,6 +107,249 @@ function refreshDynamicLocale(){
     }
     node.textContent = translate(key, params);
   });
+  updateMicButton();
+}
+
+function micSupported(){
+  return Boolean(audioModule && audioModule.hasSTT);
+}
+
+function ttsSupported(){
+  return Boolean(audioModule && audioModule.hasTTS);
+}
+
+function getIdleVoiceKey(){
+  if (micSupported()) return 'voice.status.idle';
+  if (ttsSupported()) return 'voice.status.playback';
+  return 'voice.status.unsupported';
+}
+
+function setVoiceStatus(key, params){
+  if (!voiceStatus) return;
+  if (!key){
+    voiceStatus.hidden = true;
+    setLocalizedText(voiceStatus, '');
+    return;
+  }
+  voiceStatus.hidden = false;
+  setLocalizedText(voiceStatus, key, params);
+}
+
+function updateMicButton(){
+  if (!micBtn) return;
+  const labelKey = isRecording ? 'controls.micStop' : 'controls.micStart';
+  const labelText = translate(labelKey);
+  micBtn.setAttribute('aria-label', labelText);
+  micBtn.setAttribute('title', labelText);
+  micBtn.setAttribute('aria-pressed', isRecording ? 'true' : 'false');
+  if (isRecording){
+    micBtn.disabled = false;
+  } else {
+    micBtn.disabled = !micSupported();
+  }
+  if (micLabel){
+    setLocalizedText(micLabel, labelKey);
+  }
+}
+
+function sanitizeVoiceText(text, limit = 512){
+  const sanitizer = window.Shield && typeof window.Shield.baseSanitize === 'function'
+    ? window.Shield.baseSanitize
+    : null;
+  const cleaned = sanitizer ? sanitizer(text, limit) : String(text || '').trim();
+  return typeof cleaned === 'string' ? cleaned.trim() : '';
+}
+
+function previewVoiceText(text){
+  if (!text) return '';
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  if (trimmed.length <= voicePreviewLimit) return trimmed;
+  return `${trimmed.slice(0, voicePreviewLimit)}…`;
+}
+
+function ensureAudioModule(){
+  if (audioModule) return Promise.resolve(audioModule);
+  if (!audioModulePromise){
+    audioModulePromise = import('./packs/l4_audio.js')
+      .then((mod) => {
+        audioModule = mod?.L4Audio || null;
+        updateMicButton();
+        return audioModule;
+      })
+      .catch((err) => {
+        console.error('Failed to load audio module', err);
+        audioModule = null;
+        updateMicButton();
+        return null;
+      });
+  }
+  return audioModulePromise;
+}
+
+async function startRecording(){
+  if (!micBtn || isRecording) return;
+  const audio = await ensureAudioModule();
+  if (!audio){
+    setVoiceStatus('voice.status.error');
+    return;
+  }
+  if (!audio.hasSTT){
+    setVoiceStatus(getIdleVoiceKey());
+    updateMicButton();
+    return;
+  }
+
+  if (window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function'){
+    window.speechSynthesis.cancel();
+  }
+
+  isRecording = true;
+  updateMicButton();
+  setVoiceStatus('voice.status.listening');
+
+  try {
+    stopListening = audio.listen({
+      lang: state.lang,
+      onResult: (text, isFinal) => {
+        const safeText = sanitizeVoiceText(text, 512);
+        if (!safeText){
+          if (isFinal){
+            setVoiceStatus(getIdleVoiceKey());
+          }
+          return;
+        }
+        if (isFinal){
+          if (input){
+            input.value = safeText;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.focus();
+            if (typeof input.setSelectionRange === 'function'){
+              const len = safeText.length;
+              input.setSelectionRange(len, len);
+            }
+          }
+          setVoiceStatus(getIdleVoiceKey());
+        } else {
+          const preview = previewVoiceText(safeText);
+          if (preview){
+            setVoiceStatus('voice.status.partial', { text: preview });
+          }
+        }
+      },
+      onEnd: () => {
+        isRecording = false;
+        stopListening = null;
+        updateMicButton();
+        setVoiceStatus(getIdleVoiceKey());
+      },
+      onError: (event) => {
+        console.error('Speech recognition error', event);
+        isRecording = false;
+        stopListening = null;
+        updateMicButton();
+        setVoiceStatus('voice.status.error');
+      }
+    });
+  } catch (err){
+    console.error('Failed to start voice capture', err);
+    isRecording = false;
+    stopListening = null;
+    updateMicButton();
+    setVoiceStatus('voice.status.error');
+  }
+}
+
+function stopRecording({ setIdle = true } = {}){
+  if (stopListening){
+    try {
+      stopListening();
+    } catch (err){
+      console.warn('Error stopping voice capture', err);
+    }
+    stopListening = null;
+  }
+  if (isRecording){
+    isRecording = false;
+  }
+  updateMicButton();
+  if (setIdle){
+    setVoiceStatus(getIdleVoiceKey());
+  }
+}
+
+function handleMicToggle(){
+  if (isRecording){
+    stopRecording();
+    return;
+  }
+  startRecording().catch((err) => {
+    console.error('Voice start error', err);
+    setVoiceStatus('voice.status.error');
+  });
+}
+
+async function maybeSpeakAssistant(text){
+  if (!text || isRecording) return;
+  const audio = await ensureAudioModule();
+  if (!audio || !audio.hasTTS) return;
+  const safeText = sanitizeVoiceText(text, 1600);
+  if (!safeText) return;
+  setVoiceStatus('voice.status.playing');
+  const ok = audio.speak(safeText, state.lang, {
+    onend: () => {
+      if (!isRecording){
+        setVoiceStatus(getIdleVoiceKey());
+      }
+    },
+    onerror: (event) => {
+      console.error('Speech synthesis error', event);
+      if (!isRecording){
+        setVoiceStatus('voice.status.error');
+      }
+    }
+  });
+  if (!ok && !isRecording){
+    setVoiceStatus('voice.status.error');
+  }
+}
+
+function initVoiceControls(){
+  if (!micBtn){
+    if (voiceStatus){
+      setVoiceStatus('');
+    }
+    return;
+  }
+
+  setVoiceStatus('voice.status.loading');
+  updateMicButton();
+
+  const warm = () => {
+    ensureAudioModule()
+      .then(() => {
+        updateMicButton();
+        setVoiceStatus(getIdleVoiceKey());
+      })
+      .catch((err) => {
+        console.error('Voice warmup failed', err);
+        setVoiceStatus('voice.status.error');
+      });
+  };
+
+  micBtn.addEventListener('click', handleMicToggle);
+  micBtn.addEventListener('pointerenter', warm, { once: true });
+  micBtn.addEventListener('focus', warm, { once: true });
+
+  ensureAudioModule()
+    .then(() => {
+      updateMicButton();
+      setVoiceStatus(getIdleVoiceKey());
+    })
+    .catch((err) => {
+      console.error('Voice init error', err);
+      setVoiceStatus('voice.status.error');
+    });
 }
 
 function addMessage(role, text){
@@ -170,6 +423,9 @@ async function sendMessage(event){
   if (event){
     event.preventDefault();
   }
+  if (isRecording){
+    stopRecording();
+  }
   const raw = (input.value || '').trim();
   if (!raw){
     return;
@@ -186,7 +442,7 @@ async function sendMessage(event){
   input.value = '';
 
   state.hp = honeypotField ? honeypotField.value || '' : '';
-
+  const assistantBefore = state.messages.filter((message) => message.role === 'assistant').length;
   await routeChat({
     state: { ...state },
     ui: {
@@ -196,6 +452,17 @@ async function sendMessage(event){
       addMsg: addMessage
     }
   });
+
+  const assistants = state.messages.filter((message) => message.role === 'assistant');
+  if (assistants.length > assistantBefore){
+    const latest = assistants[assistants.length - 1];
+    if (latest && latest.content && latest.content !== lastSpokenText){
+      lastSpokenText = latest.content;
+      maybeSpeakAssistant(latest.content).catch((err) => {
+        console.error('Speech synthesis failed', err);
+      });
+    }
+  }
 }
 
 function initCookieBanner(){
@@ -282,6 +549,7 @@ function init(){
   initFooter();
   initBudgetWatcher();
   bindEvents();
+  initVoiceControls();
 }
 
 if (document.readyState === 'loading'){

@@ -57,13 +57,14 @@
             <div class="bar">
               <label class="visually-hidden" for="input" data-i18n="controls.inputLabel">Chat message</label>
               <textarea id="input" placeholder="Type a message…" aria-label="Message input" data-i18n-attrs="placeholder:controls.placeholder,aria-label:controls.inputLabel"></textarea>
-              <button id="micBtn" type="button" class="mic-btn" aria-pressed="false" aria-label="Start voice input" disabled>
+              <button id="micBtn" type="button" class="mic-btn" aria-pressed="false" aria-label="Start voice input" title="Start voice input" disabled>
                 <span aria-hidden="true">🎤</span>
-                <span class="visually-hidden">Start voice input</span>
+                <span class="visually-hidden" data-role="mic-label">Start voice input</span>
               </button>
               <button id="send" type="submit" data-i18n="controls.send">Send</button>
             </div>
             <div class="muted" id="status" role="status" aria-live="polite" data-i18n="status.idle">Ready.</div>
+            <div class="muted" id="voiceStatus" role="status" aria-live="polite"></div>
             <div class="bad" id="warn" role="alert"></div>
             <div class="session-meters" id="usageMeters" aria-live="polite">
               <div class="session-meter" id="tokenMeter" role="status">
