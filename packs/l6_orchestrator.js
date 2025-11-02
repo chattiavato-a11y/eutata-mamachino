@@ -5,6 +5,92 @@
 import { L5Local } from './l5_local_llm.js';
 import { WebLLM } from './l5_webllm.js';
 
+function createGuardState(){
+  return {
+    warnings: [],
+    errors: [],
+    blocked: false,
+    budget: {
+      softExceeded: false,
+      hardExceeded: false,
+    }
+  };
+}
+
+function clearWarnings(ui, guardrails){
+  if (guardrails){
+    guardrails.warnings = [];
+    guardrails.errors = [];
+    guardrails.blocked = false;
+    if (guardrails.budget){
+      guardrails.budget.softExceeded = false;
+      guardrails.budget.hardExceeded = false;
+    }
+  }
+  const warnEl = ui?.warnEl;
+  if (warnEl){
+    warnEl.textContent = '';
+    warnEl.hidden = true;
+    warnEl.removeAttribute?.('data-severity');
+    delete warnEl.dataset.localeKey;
+    delete warnEl.dataset.localeParams;
+  }
+}
+
+function pushWarning(guardrails, ui, message, severity = 'warn', meta = {}){
+  if (!guardrails) return;
+  const entry = {
+    message: message || '',
+    severity,
+    code: meta.code || null,
+  };
+  if (severity === 'error'){
+    guardrails.errors.push(entry);
+    guardrails.blocked = true;
+  } else {
+    guardrails.warnings.push(entry);
+  }
+  if (meta.code === 'budget.soft'){
+    guardrails.budget.softExceeded = true;
+  }
+  if (meta.code === 'budget.hard'){
+    guardrails.budget.hardExceeded = true;
+    guardrails.blocked = true;
+  }
+  if (meta.blocked){
+    guardrails.blocked = true;
+  }
+
+  const warnEl = ui?.warnEl;
+  if (warnEl){
+    delete warnEl.dataset.localeKey;
+    delete warnEl.dataset.localeParams;
+    warnEl.textContent = entry.message;
+    warnEl.hidden = !entry.message;
+    if (entry.message){
+      warnEl.dataset.severity = severity;
+    } else {
+      warnEl.removeAttribute?.('data-severity');
+    }
+  }
+}
+
+function mergeGuardrails(target, source){
+  if (!target || !source || target === source) return target || source;
+  if (Array.isArray(source.warnings)){
+    target.warnings.push(...source.warnings);
+  }
+  if (Array.isArray(source.errors)){
+    target.errors.push(...source.errors);
+  }
+  target.blocked = Boolean(target.blocked || source.blocked);
+  if (source.budget){
+    target.budget.softExceeded = Boolean(target.budget.softExceeded || source.budget.softExceeded);
+    target.budget.hardExceeded = Boolean(target.budget.hardExceeded || source.budget.hardExceeded);
+  }
+  return target;
+}
+
 const translate = (lang, key, params) => {
   const api = window.I18N;
   if (api && typeof api.t === 'function'){
@@ -107,44 +193,19 @@ const Budget = {
   note(n){ this.spent += Math.max(0, n|0); }
 };
 
-function createGuardEmitter(ui, lang, { onGuardrailWarning, onGuardrailError } = {}){
-  const warnEl = ui?.warnEl;
-  const apply = (level, payload, params) => {
-    const { key, message, params: resolvedParams } = resolveGuardPayload(lang, payload, params);
-    if (warnEl){
-      if (key){
-        setWarn(ui, lang, key, resolvedParams || undefined);
-      } else {
-        delete warnEl.dataset.localeKey;
-        delete warnEl.dataset.localeParams;
-        warnEl.textContent = message;
-      }
-      const hasMessage = Boolean(message);
-      warnEl.hidden = !hasMessage;
-      if (hasMessage){
-        warnEl.dataset.severity = level;
-      } else {
-        warnEl.removeAttribute?.('data-severity');
-      }
-    }
-    if (!message){
-      return;
-    }
-    if (level === 'error'){
-      onGuardrailError?.(message);
-    } else {
-      onGuardrailWarning?.(message);
-    }
-  };
+function createGuardEmitter(ui, guardrails, { onGuardrailWarning, onGuardrailError } = {}){
   return {
-    warn(payload, params){ apply('warn', payload, params); },
-    error(payload, params){ apply('error', payload, params); },
+    warn(message, options){
+      pushWarning(guardrails, ui, message, 'warn', options);
+      onGuardrailWarning?.(message || '', options);
+    },
+    error(message, options){
+      const meta = { blocked: true, ...(options || {}) };
+      pushWarning(guardrails, ui, message, 'error', meta);
+      onGuardrailError?.(message || '', meta);
+    },
     clear(){
-      if (warnEl){
-        delete warnEl.dataset.localeKey;
-        delete warnEl.dataset.localeParams;
-      }
-      apply('warn', '', null);
+      clearWarnings(ui, guardrails);
     }
   };
 }
@@ -173,7 +234,7 @@ async function deriveStrong({ query, lang }){
 }
 
 // Try local extractive (L5). Returns {ok, text} or {ok:false}
-async function tryExtractive({ query, lang, ui }){
+async function tryExtractive({ query, lang, ui, guardrails }){
   setStatus(ui, lang, 'status.thinkingLocal');
   const text = await L5Local.draft({ query, lang, bm25Min:0.6, coverageNeeded:2 });
   if (!text) return { ok:false };
@@ -188,6 +249,8 @@ async function tryExtractive({ query, lang, ui }){
     } else {
       const toks = Budget.approxTokens(text); Budget.note(toks);
       setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
+      if (ui?.focusAssistant) ui.focusAssistant(aiEl);
+      return;
     }
   };
   step();
@@ -196,7 +259,7 @@ async function tryExtractive({ query, lang, ui }){
 
 // Try WebLLM on GPU (only if low confidence)
 async function tryWebGPU({ query, lang, ui, modelId, guard, guardrails }){
-  ui.statusEl.textContent = 'Loading local model…';
+  setStatus(ui, lang, 'status.loadingLocalModel');
   await WebLLM.load({
     model: modelId || 'Llama-3.1-8B-Instruct-q4f16_1',
     progress: (p)=>{
@@ -224,7 +287,7 @@ async function tryWebGPU({ query, lang, ui, modelId, guard, guardrails }){
           noteGuardrail(guardrails, { severity: 'error', key });
         }
         if (!budgetWarned){
-          guard?.error?.(key);
+          pushWarning(guardrails, ui, translate(lang, 'warnings.sessionCap'), 'error', { code: 'budget.hard', blocked: true });
           budgetWarned = true;
         }
         return;
@@ -240,8 +303,9 @@ async function tryWebGPU({ query, lang, ui, modelId, guard, guardrails }){
 }
 
 // Server fallback (/api/chat) with budget guard
-async function tryServer({ state, lang, ui, guard, guardrails }){
-  ui.statusEl.textContent='Connecting…';
+async function tryServer({ state, ui, guard }){
+  const lang = state?.lang || 'en';
+  setStatus(ui, lang, 'status.connecting');
   const res = await fetch('/api/chat', {
     method:'POST',
     headers:{ 'Content-Type':'application/json','X-CSRF':state.csrf, 'X-Session-Tokens-Spent': String(Budget.spent) },
@@ -285,11 +349,7 @@ async function tryServer({ state, lang, ui, guard, guardrails }){
       // budget guard on server stream too
       const approx = Budget.approxTokens(data);
       if (!Budget.canSpend(approx)) {
-        if (!budgetWarned){
-          noteGuardrail(guardrails, { severity: 'warn', key: 'warnings.sessionCap' });
-          guard?.warn?.('warnings.sessionCap');
-          budgetWarned = true;
-        }
+        guard?.warn?.(translate(lang, 'warnings.sessionCap'));
         continue;
       }
       text+=data; aiEl.textContent=text; ui.chatEl.scrollTop=ui.chatEl.scrollHeight;
@@ -301,9 +361,8 @@ async function tryServer({ state, lang, ui, guard, guardrails }){
 }
 
 export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailError } = {}){
-  const lang = state.lang || 'en';
-  const guardrails = createGuardrailState({ lang });
-  const guard = createGuardEmitter(ui, lang, { onGuardrailWarning, onGuardrailError });
+  const guardrails = createGuardState();
+  const guard = createGuardEmitter(ui, guardrails, { onGuardrailWarning, onGuardrailError });
   guard.clear?.();
   const mode = state.mode || 'hybrid'; // 'local' | 'hybrid' | 'external'
   const lastUser = state.messages.filter(m=>m.role==='user').slice(-1)[0];
@@ -311,20 +370,19 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
 
   // Hard budget check upfront
   if (!Budget.canSpend(1)){
-    noteGuardrail(guardrails, { severity: 'error', key: 'warnings.sessionCapHard' });
-    guard.error('warnings.sessionCapHard');
-    return { source:'budget', guardrails };
+    guard.warn(translate(lang, 'warnings.sessionCapHard'), { code: 'budget.hard', blocked: true });
+    return;
   }
 
-  clearWarnings(ui);
+  clearWarnings(ui, guardrails);
 
   // 1) Local extractive always first
-  const ex = await tryExtractive({ query, lang, ui });
+  const ex = await tryExtractive({ query, lang: state.lang, ui, guardrails });
+  mergeGuardrails(guardrails, ex.guardrails);
   if (ex.ok){
     state.messages.push({role:'assistant', content: ex.text});
     if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
-      noteGuardrail(guardrails, { severity: 'warn', key: 'warnings.softCap' });
-      guard.warn('warnings.softCap');
+      guard.warn(translate(lang, 'warnings.softCap'), { code: 'budget.soft' });
     }
     return { source:'extractive', guardrails };
   }
@@ -332,34 +390,29 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
   // 2) Low confidence → try WebLLM/WebGPU if allowed by mode and GPU is available and budget permits
   if (mode !== 'external' && WebLLM.hasWebGPU() && Budget.canSpend(500)){ // need headroom
     try {
-      const text = await tryWebGPU({ query, lang, ui, modelId: state.webllmModel, guard, guardrails });
+      const text = await tryWebGPU({ query, lang: state.lang, ui, modelId: state.webllmModel, guard, guardrails });
       if (text){
         state.messages.push({role:'assistant', content: text});
         if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
-          noteGuardrail(guardrails, { severity: 'warn', key: 'warnings.softCapShort' });
-          guard.warn('warnings.softCapShort');
+          guard.warn(translate(lang, 'warnings.softCapShort'), { code: 'budget.soft' });
         }
         return { source:'webgpu', guardrails };
       }
     } catch (e){
       // ignore and drop to server path
-      const isWebGPUIssue = String(e?.message||e).includes('webgpu');
-      const key = isWebGPUIssue ? 'warnings.webgpuMissing' : 'warnings.localModelMissing';
-      noteGuardrail(guardrails, { severity: 'warn', key });
-      guard.warn(key);
+      const message = (String(e?.message||e).includes('webgpu'))
+        ? translate(lang, 'warnings.webgpuMissing')
+        : translate(lang, 'warnings.localModelMissing');
+      guard.warn(message);
     }
   }
 
   // 3) Server fallback if mode allows
   if (mode !== 'local'){
-    if (!Budget.canSpend(1000)){
-      noteGuardrail(guardrails, { severity: 'warn', key: 'warnings.serverBudget' });
-      guard.warn('warnings.serverBudget');
-      return { source:'budget', guardrails };
-    }
-    const text = await tryServer({ state, lang, ui, guard, guardrails });
+    if (!Budget.canSpend(1000)){ guard.warn(translate(lang, 'warnings.serverBudget')); return; }
+    const text = await tryServer({ state, ui, guard });
     if (text) state.messages.push({role:'assistant', content: text});
-    if (!guardrails.warnings.length) clearWarnings(ui);
+    if (!guardrails.warnings.length) clearWarnings(ui, guardrails);
     return { source:'server', guardrails };
   }
 
