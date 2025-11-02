@@ -12,55 +12,10 @@ import { routeChat } from './packs/l6_orchestrator.js';
   const langSel = qs('#langSel');
   const themeBtn = qs('#themeBtn');
   const form = qs('#chatForm');
-  const cookieBanner = qs('#cookieBanner');
-  const acceptCookies = qs('#acceptCookies');
-  const declineCookies = qs('#declineCookies');
   const copyrightYear = qs('#copyrightYear');
-  const modeSel = qs('#modeSel');
-  const budgetHint = qs('#budgetHint');
+  const footerCopy = qs('#footerCopy');
+  const dialogTriggers = document.querySelectorAll('[data-dialog-target]');
 
-  const STRINGS = {
-    en: {
-      composer: {
-        placeholder: 'Type a message…',
-        send: 'Send',
-        micIdle: 'Start voice input',
-        micListening: 'Stop voice input',
-        micUnavailable: 'Voice input unavailable',
-        status: {
-          idle: 'Ready.',
-          listening: 'Listening…',
-          partial: 'Heard: {{text}}',
-          permission: 'Microphone permission is required.',
-          unsupported: 'Voice capture unavailable.',
-          error: 'Microphone error.',
-        },
-        blocked: 'Blocked input.',
-        blockedReasons: 'Blocked input. Reasons: {{reasons}}',
-      },
-    },
-    es: {
-      composer: {
-        placeholder: 'Escribe un mensaje…',
-        send: 'Enviar',
-        micIdle: 'Iniciar entrada de voz',
-        micListening: 'Detener entrada de voz',
-        micUnavailable: 'Entrada de voz no disponible',
-        status: {
-          idle: 'Listo.',
-          listening: 'Escuchando…',
-          partial: 'Oído: {{text}}',
-          permission: 'Se requiere permiso del micrófono.',
-          unsupported: 'Captura de voz no disponible.',
-          error: 'Error del micrófono.',
-        },
-        blocked: 'Entrada bloqueada.',
-        blockedReasons: 'Entrada bloqueada. Motivos: {{reasons}}',
-      },
-    },
-  };
-
-  const consentKey = 'shield.cookies';
   const themeKey = 'shield.theme';
   const langKey = 'shield.lang';
 
@@ -87,107 +42,128 @@ import { routeChat } from './packs/l6_orchestrator.js';
     messages: [],
     lang: safeGet(langKey) || 'en',
     theme: safeGet(themeKey) || (prefersLight ? 'light' : 'dark'),
-    csrf: window.Shield?.csrfToken ? window.Shield.csrfToken() : '',
-    analytics: safeGet(consentKey) === 'all',
-    mode: (modeSel && modeSel.value) || 'hybrid',
-    webllmModel: 'Llama-3.1-8B-Instruct-q4f16_1',
+    csrf: Shield.csrfToken(),
   };
 
-  const format = (template, params = {}) => {
-    if (typeof template !== 'string') {
-      return '';
-    }
-    return template.replace(/{{(\w+)}}/g, (_, key) => (params[key] != null ? String(params[key]) : ''));
+  const usage = {
+    tokens: { used: 0, limit: null },
+    minutes: { used: null, limit: null },
   };
 
-  const getStrings = () => STRINGS[state.lang] || STRINGS.en;
+  function normalizeNumber(value){
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const cleaned = String(value).trim();
+    if (!cleaned) return null;
+    const match = cleaned.match(/[-+]?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    const numeric = Number(match[0]);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
 
-  let voiceOwnsStatus = true;
-  let voiceStatus = 'idle';
-  let audioModulePromise = null;
-  let audioModule = null;
-  let stopListening = null;
-  let isRecording = false;
-  let isLoadingAudio = false;
+  function renderUsage(){
+    if (tokenMeter && tokenProgress && tokenValue){
+      const used = usage.tokens.used ?? 0;
+      const limit = usage.tokens.limit;
+      const max = (limit && limit > 0) ? limit : Math.max(used, 1);
+      tokenProgress.max = max;
+      tokenProgress.value = Math.min(used, max);
+      tokenValue.textContent = limit ? `${used} / ${limit}` : `${used}`;
+      tokenMeter.classList.toggle('hidden', used === null);
+    }
 
-  const speechSupported = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const micUnavailable = () => (!speechSupported) || (audioModule && !audioModule.hasSTT);
-
-  const setWarning = (message = '', severity = 'warn') => {
-    if (!warnEl) {
-      return;
-    }
-    warnEl.textContent = message || '';
-    warnEl.hidden = !message;
-    if (message) {
-      warnEl.dataset.severity = severity;
-    } else {
-      warnEl.removeAttribute('data-severity');
-    }
-  };
-
-  const setVoiceStatus = (key = 'idle', ctx) => {
-    if (!statusEl) {
-      return;
-    }
-    voiceOwnsStatus = true;
-    voiceStatus = key;
-    const strings = getStrings().composer.status;
-    const template = strings[key] || strings.idle;
-    statusEl.textContent = format(template, ctx);
-    statusEl.dataset.status = key;
-  };
-
-  const releaseVoiceStatus = () => {
-    voiceOwnsStatus = false;
-  };
-
-  const updateMicLabel = (isActive, unavailable = micUnavailable()) => {
-    if (!micBtn) {
-      return;
-    }
-    const strings = getStrings().composer;
-    let label = strings.micIdle;
-    if (unavailable) {
-      label = strings.micUnavailable;
-    } else if (isActive) {
-      label = strings.micListening;
-    }
-    micBtn.setAttribute('aria-label', label);
-    const hidden = micBtn.querySelector('.visually-hidden');
-    if (hidden) {
-      hidden.textContent = label;
-    }
-  };
-
-  const updateMicVisual = (isActive) => {
-    if (!micBtn) {
-      return;
-    }
-    micBtn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-  };
-
-  const updateComposerCopy = () => {
-    const strings = getStrings().composer;
-    if (input) {
-      input.placeholder = strings.placeholder;
-    }
-    if (sendBtn) {
-      sendBtn.textContent = strings.send;
-    }
-    if (micBtn) {
-      updateMicLabel(isRecording);
-    }
-    if (voiceOwnsStatus) {
-      if (voiceStatus === 'partial') {
-        setVoiceStatus('partial', { text: input ? input.value : '' });
+    if (minuteMeter && minuteProgress && minuteValue){
+      const used = usage.minutes.used;
+      if (used === null || used === undefined){
+        minuteMeter.classList.add('hidden');
       } else {
-        setVoiceStatus(voiceStatus || 'idle');
+        const limit = usage.minutes.limit;
+        const max = (limit && limit > 0) ? limit : Math.max(used, 1);
+        minuteProgress.max = max;
+        minuteProgress.value = Math.min(used, max);
+        minuteValue.textContent = limit ? `${used} / ${limit}` : `${used}`;
+        minuteMeter.classList.remove('hidden');
       }
     }
-  };
+  }
 
-  const applyTheme = (theme) => {
+  function resetUsage(){
+    usage.tokens.used = 0;
+    usage.minutes.used = null;
+    usage.minutes.limit = null;
+    renderUsage();
+  }
+
+  function parseHeaderPayload(raw){
+    if (!raw) return null;
+    const trimmed = String(raw).trim();
+    if (!trimmed) return null;
+    let parsed = null;
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))){
+      try {
+        const maybe = JSON.parse(trimmed);
+        if (maybe && typeof maybe === 'object'){ parsed = maybe; }
+      } catch (err){
+        console.debug('Unable to parse JSON header payload', err);
+      }
+    }
+    if (!parsed){
+      parsed = {};
+      const segments = trimmed.split(/[,;]/);
+      for (const segment of segments){
+        const part = segment.trim();
+        if (!part) continue;
+        const match = part.match(/^([^:=]+)[:=]\s*(.+)$/);
+        if (!match) continue;
+        const key = match[1].trim();
+        const value = match[2].trim();
+        if (key) parsed[key] = value;
+      }
+    }
+    return parsed;
+  }
+
+  function applyUsageUpdate(payload){
+    if (!payload || typeof payload !== 'object') return;
+    let changed = false;
+    for (const [key, value] of Object.entries(payload)){
+      const lower = key.toLowerCase();
+      const num = normalizeNumber(value);
+      if (num === null) continue;
+      if (lower.includes('token')){
+        if (lower.includes('limit') || lower.includes('max') || lower.includes('cap') || lower.includes('total')){
+          if (usage.tokens.limit !== num){ usage.tokens.limit = num; changed = true; }
+        } else if (usage.tokens.used !== num){
+          usage.tokens.used = num;
+          changed = true;
+        }
+      }
+      if (lower.includes('minute') || lower.includes('time')){
+        if (lower.includes('limit') || lower.includes('max') || lower.includes('cap') || lower.includes('total')){
+          if (usage.minutes.limit !== num){ usage.minutes.limit = num; changed = true; }
+        } else if (usage.minutes.used !== num){
+          usage.minutes.used = num;
+          changed = true;
+        }
+      }
+    }
+    if (changed) renderUsage();
+  }
+
+  function handleSseComment(comment){
+    const payload = parseHeaderPayload(comment);
+    if (payload && Object.keys(payload).length){
+      applyUsageUpdate(payload);
+    }
+  }
+
+  function isHeaderEvent(name){
+    if (!name) return false;
+    const value = String(name).toLowerCase();
+    return value === 'header' || value === 'usage' || value === 'meta';
+  }
+
+  function applyTheme(theme){
     const normalized = theme === 'light' ? 'light' : 'dark';
     document.documentElement.dataset.theme = normalized;
     if (themeBtn) {
@@ -220,9 +196,11 @@ import { routeChat } from './packs/l6_orchestrator.js';
     return div;
   };
 
-  const ensureAudioModule = async () => {
-    if (!speechSupported) {
-      return null;
+  function clientCheck(text){
+    const check = Shield.scanAndSanitize(text, {maxLen: 2000, threshold: 12});
+    if (!check.ok){
+      warn.textContent = `Blocked by client guardrails. Reasons: ${check.reasons.join(', ')}`;
+      return {ok:false};
     }
     if (!audioModulePromise) {
       audioModulePromise = import('./packs/l4_audio.js')
@@ -397,53 +375,118 @@ import { routeChat } from './packs/l6_orchestrator.js';
       return;
     }
 
-    state.hp = state.hpField ? state.hpField.value || '' : '';
-    releaseVoiceStatus();
+    status.textContent = 'Connecting…';
+    resetUsage();
     try {
-      await routeChat({
-        state,
-        ui: { chatEl: chat, warnEl, statusEl, addMsg },
-        onGuardrailWarning: (message) => handleGuard(message, 'warn'),
-        onGuardrailError: (message) => handleGuard(message, 'error'),
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF': state.csrf,
+        },
+        body: JSON.stringify({
+          messages: state.messages.slice(-16),
+          lang: state.lang,
+          csrf: state.csrf,
+          hp: (state.hpField && state.hpField.value) || '',
+        }),
       });
-    } catch (err) {
-      console.error('Chat routing error', err);
-      setWarning('Chat routing failed.', 'error');
+
+      if (!res.ok || !res.body){
+        status.textContent = 'Error starting stream.';
+        return;
+      }
+
+      status.textContent = 'Streaming…';
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      const aiEl = addMessage('assistant', '');
+      let aiText = '';
+      let buffer = '';
+      let currentEvent = 'message';
+      let headerChunk = '';
+      let streamClosed = false;
+
+      while (!streamClosed){
+        const {value, done} = await reader.read();
+        if (done){
+          if (isHeaderEvent(currentEvent) && headerChunk){
+            const payload = parseHeaderPayload(headerChunk);
+            applyUsageUpdate(payload);
+          }
+          break;
+        }
+        buffer += decoder.decode(value, {stream: true});
+        let newlineIndex;
+        while ((newlineIndex = buffer.indexOf('\n')) !== -1){
+          const rawLine = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          const line = rawLine.replace(/\r$/, '');
+
+          if (line === ''){
+            if (isHeaderEvent(currentEvent) && headerChunk){
+              const payload = parseHeaderPayload(headerChunk);
+              applyUsageUpdate(payload);
+              headerChunk = '';
+            }
+            currentEvent = 'message';
+            continue;
+          }
+
+          if (line.startsWith('event:')){
+            currentEvent = line.slice(6).trim().toLowerCase() || 'message';
+            continue;
+          }
+
+          if (line.startsWith(':')){
+            handleSseComment(line.slice(1));
+            continue;
+          }
+
+          if (!line.startsWith('data:')){
+            continue;
+          }
+
+          const data = line.slice(6);
+          if (isHeaderEvent(currentEvent)){
+            headerChunk += data;
+            continue;
+          }
+
+          if (data === '[END]'){
+            buffer = '';
+            streamClosed = true;
+            break;
+          }
+          aiText += data;
+          aiEl.textContent = aiText;
+          chat.scrollTop = chat.scrollHeight;
+        }
+      }
+
+      status.textContent = 'Ready.';
+      state.messages.push({role: 'assistant', content: aiText});
+    } catch (err){
+      console.error('Chat error', err);
+      status.textContent = 'Network error.';
     }
   };
 
-  const initCookieBanner = () => {
-    if (!cookieBanner || !acceptCookies || !declineCookies) {
-      return;
-    }
-    const stored = safeGet(consentKey);
-    if (!stored) {
-      cookieBanner.classList.remove('hidden');
-    }
-
-    acceptCookies.addEventListener('click', () => {
-      safeSet(consentKey, 'all');
-      state.analytics = true;
-      cookieBanner.classList.add('hidden');
-    });
-
-    declineCookies.addEventListener('click', () => {
-      safeSet(consentKey, 'essential');
-      state.analytics = false;
-      cookieBanner.classList.add('hidden');
-    });
-  };
-
-  const initHoneypot = () => {
-    if (!form || !window.Shield?.attachHoneypot) {
+  function initHoneypot(){
+    if (!form || !Shield.attachHoneypot){
       return;
     }
     state.hpField = window.Shield.attachHoneypot(form);
   };
 
-  const initFooter = () => {
-    if (!copyrightYear) {
-      return;
+  function initFooter(){
+    const now = new Date();
+    const year = String(now.getFullYear());
+    if (copyrightYear){
+      copyrightYear.textContent = year;
+    }
+    if (footerCopy){
+      footerCopy.textContent = `© ${year} ShieldOps Consortium · Trademarks belong to their respective owners.`;
     }
     const now = new Date();
     copyrightYear.textContent = String(now.getFullYear());
@@ -479,33 +522,66 @@ import { routeChat } from './packs/l6_orchestrator.js';
     micBtn.addEventListener('focus', warm, { once: true });
   };
 
-  const init = () => {
-    if (!ensureChatReady()) {
-      return;
-    }
-    setWarning('');
-    setVoiceStatus('idle');
+  function initPolicyDialogs(){
+    dialogTriggers.forEach((trigger) => {
+      const targetId = trigger.getAttribute('data-dialog-target');
+      const dialog = targetId ? document.getElementById(targetId) : null;
+      if (!dialog){
+        return;
+      }
+
+      trigger.addEventListener('click', () => {
+        if (typeof dialog.showModal === 'function'){
+          dialog.showModal();
+        } else {
+          dialog.setAttribute('open', '');
+        }
+      });
+
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog && typeof dialog.close === 'function'){
+          dialog.close('backdrop');
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-dialog-close]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        const dialog = btn.closest('dialog');
+        if (dialog && typeof dialog.close === 'function'){
+          event.preventDefault();
+          dialog.close('button');
+        }
+      });
+    });
+  }
+
+  function init(){
     applyTheme(state.theme);
     applyLanguage(state.lang);
-    initCookieBanner();
     initHoneypot();
     initFooter();
-    initBudgetHint();
-    initMic();
+    initPolicyDialogs();
+
+    if (!form || !input || !sendBtn || !chat){
+      console.error('Critical UI elements missing; aborting init.');
+      return;
+    }
 
     form.addEventListener('submit', sendMsg);
     sendBtn.addEventListener('click', sendMsg);
 
-    themeBtn?.addEventListener('click', () => {
-      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
-    });
+    if (themeBtn){
+      themeBtn.addEventListener('click', () => {
+        applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+      });
+    }
 
-    langSel?.addEventListener('change', (event) => {
-      if (isRecording) {
-        stopRecording();
-      }
-      applyLanguage(event.target.value);
-    });
+    if (langSel){
+      langSel.addEventListener('change', (event) => {
+        applyLanguage(event.target.value);
+      });
+    }
 
     modeSel?.addEventListener('change', (event) => {
       state.mode = event.target.value;
