@@ -14,47 +14,201 @@
   const acceptCookies = qs('#acceptCookies');
   const declineCookies = qs('#declineCookies');
   const copyrightYear = qs('#copyrightYear');
+  const headerTitle = qs('[data-i18n="headerTitle"]');
+  const themeLabel = qs('[data-i18n="themeLabel"]');
+  const langLabel = qs('[data-i18n="langLabel"]');
+  const messageLabel = qs('[data-i18n="messageLabel"]');
+  const langOptionEn = langSel ? langSel.querySelector('option[value="en"]') : null;
+  const langOptionEs = langSel ? langSel.querySelector('option[value="es"]') : null;
 
   const consentKey = 'shield.cookies';
   const themeKey = 'shield.theme';
   const langKey = 'shield.lang';
 
-  const safeGet = (key) => {
+  const safeGet = (key, storage = window.localStorage) => {
     try {
-      return window.localStorage.getItem(key);
+      return storage.getItem(key);
     } catch (err){
       console.warn('Storage get blocked', err);
       return null;
     }
   };
 
-  const safeSet = (key, value) => {
+  const safeSet = (key, value, storage = window.localStorage) => {
     try {
-      window.localStorage.setItem(key, value);
+      storage.setItem(key, value);
     } catch (err){
       console.warn('Storage set blocked', err);
     }
   };
 
-  const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+  const detectPreferredTheme = () => {
+    const stored = safeGet(themeKey, window.sessionStorage);
+    if (stored === 'light' || stored === 'dark'){
+      return stored;
+    }
+    if (typeof window.matchMedia === 'function'){
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'dark';
+  };
+
+  const detectPreferredLanguage = () => {
+    const stored = safeGet(langKey, window.sessionStorage);
+    return stored === 'es' ? 'es' : 'en';
+  };
+
+  const translations = {
+    en: {
+      headerTitle: 'OPS Chat Interface',
+      themeLabel: 'Theme',
+      themeButtonLight: 'Light',
+      themeButtonDark: 'Dark',
+      themeToggleToLight: 'Switch to light theme',
+      themeToggleToDark: 'Switch to dark theme',
+      langLabel: 'Language',
+      languageOptionEn: 'English',
+      languageOptionEs: 'Spanish',
+      send: 'Send',
+      messageLabel: 'Chat message',
+      messagePlaceholder: 'Type a message…',
+      statusReady: 'Ready.',
+      statusConnecting: 'Connecting…',
+      statusStreaming: 'Streaming…',
+      statusStartError: 'Error starting stream.',
+      statusNetworkError: 'Network error.',
+      warnBlocked: (reasons) => `Blocked by client Shield. Reasons: ${reasons.join(', ')}`,
+    },
+    es: {
+      headerTitle: 'Interfaz de chat OPS',
+      themeLabel: 'Tema',
+      themeButtonLight: 'Claro',
+      themeButtonDark: 'Oscuro',
+      themeToggleToLight: 'Cambiar a tema claro',
+      themeToggleToDark: 'Cambiar a tema oscuro',
+      langLabel: 'Idioma',
+      languageOptionEn: 'Inglés',
+      languageOptionEs: 'Español',
+      send: 'Enviar',
+      messageLabel: 'Mensaje del chat',
+      messagePlaceholder: 'Escribe un mensaje…',
+      statusReady: 'Listo.',
+      statusConnecting: 'Conectando…',
+      statusStreaming: 'Transmitiendo…',
+      statusStartError: 'Error al iniciar la transmisión.',
+      statusNetworkError: 'Error de red.',
+      warnBlocked: (reasons) => `Bloqueado por Shield del cliente. Motivos: ${reasons.join(', ')}`,
+    },
+  };
+
+  const getStrings = () => translations[state.lang] || translations.en;
 
   const state = {
     messages: [],
-    lang: safeGet(langKey) || 'en',
-    theme: safeGet(themeKey) || (prefersLight ? 'light' : 'dark'),
+    lang: 'en',
+    theme: 'dark',
     csrf: Shield.csrfToken(),
     analytics: safeGet(consentKey) === 'all',
+    statusKey: 'statusReady',
+    warnKey: null,
+    warnData: null,
   };
+
+  state.lang = detectPreferredLanguage();
+  state.theme = detectPreferredTheme();
+
+  document.documentElement.dataset.theme = state.theme;
+  document.documentElement.lang = state.lang;
+
+  function updateThemeButton(strings){
+    if (!themeBtn){
+      return;
+    }
+    const isDark = state.theme === 'dark';
+    const labelKey = isDark ? 'themeButtonDark' : 'themeButtonLight';
+    const toggleLabel = isDark ? strings.themeToggleToLight : strings.themeToggleToDark;
+    themeBtn.textContent = strings[labelKey];
+    themeBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+    themeBtn.setAttribute('aria-label', toggleLabel);
+    themeBtn.setAttribute('title', toggleLabel);
+  }
+
+  function setStatus(key){
+    state.statusKey = key;
+    if (status){
+      const strings = getStrings();
+      status.textContent = strings[key] || '';
+    }
+  }
+
+  function setWarnBlocked(reasons){
+    state.warnKey = 'warnBlocked';
+    state.warnData = {reasons};
+    if (warn){
+      warn.textContent = getStrings().warnBlocked(reasons);
+    }
+  }
+
+  function clearWarn(){
+    state.warnKey = null;
+    state.warnData = null;
+    if (warn){
+      warn.textContent = '';
+    }
+  }
+
+  function updateUIStrings(){
+    const strings = getStrings();
+    if (headerTitle){
+      headerTitle.textContent = strings.headerTitle;
+    }
+    if (themeLabel){
+      themeLabel.textContent = strings.themeLabel;
+    }
+    if (langLabel){
+      langLabel.textContent = strings.langLabel;
+    }
+    if (langSel){
+      langSel.value = state.lang;
+      langSel.setAttribute('aria-label', strings.langLabel);
+      langSel.setAttribute('title', strings.langLabel);
+    }
+    if (langOptionEn){
+      langOptionEn.textContent = strings.languageOptionEn;
+    }
+    if (langOptionEs){
+      langOptionEs.textContent = strings.languageOptionEs;
+    }
+    if (messageLabel){
+      messageLabel.textContent = strings.messageLabel;
+    }
+    if (input){
+      input.placeholder = strings.messagePlaceholder;
+      input.setAttribute('aria-label', strings.messageLabel);
+    }
+    if (sendBtn){
+      sendBtn.textContent = strings.send;
+    }
+    updateThemeButton(strings);
+    if (status){
+      const statusText = strings[state.statusKey] || '';
+      status.textContent = statusText;
+    }
+    if (warn){
+      if (state.warnKey === 'warnBlocked' && state.warnData){
+        warn.textContent = strings.warnBlocked(state.warnData.reasons);
+      } else if (!state.warnKey){
+        warn.textContent = '';
+      }
+    }
+  }
 
   function applyTheme(theme){
     const normalized = theme === 'light' ? 'light' : 'dark';
     document.documentElement.dataset.theme = normalized;
-    if (themeBtn){
-      themeBtn.textContent = normalized.charAt(0).toUpperCase() + normalized.slice(1);
-      themeBtn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
-    }
-    safeSet(themeKey, normalized);
     state.theme = normalized;
+    updateThemeButton(getStrings());
+    safeSet(themeKey, normalized, window.sessionStorage);
   }
 
   function applyLanguage(lang){
@@ -62,8 +216,10 @@
     if (langSel){
       langSel.value = normalized;
     }
-    safeSet(langKey, normalized);
+    safeSet(langKey, normalized, window.sessionStorage);
     state.lang = normalized;
+    document.documentElement.lang = normalized;
+    updateUIStrings();
   }
 
   function addMessage(role, text){
@@ -78,10 +234,10 @@
   function clientCheck(text){
     const check = Shield.scanAndSanitize(text, {maxLen: 2000, threshold: 12});
     if (!check.ok){
-      warn.textContent = `Blocked by client Shield. Reasons: ${check.reasons.join(', ')}`;
+      setWarnBlocked(check.reasons);
       return {ok:false};
     }
-    warn.textContent = '';
+    clearWarn();
     return {ok:true, sanitized: check.sanitized};
   }
 
@@ -109,7 +265,7 @@
       return;
     }
 
-    status.textContent = 'Connecting…';
+    setStatus('statusConnecting');
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -127,11 +283,11 @@
       });
 
       if (!res.ok || !res.body){
-        status.textContent = 'Error starting stream.';
+        setStatus('statusStartError');
         return;
       }
 
-      status.textContent = 'Streaming…';
+      setStatus('statusStreaming');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       const aiEl = addMessage('assistant', '');
@@ -156,11 +312,11 @@
         }
       }
 
-      status.textContent = 'Ready.';
+      setStatus('statusReady');
       state.messages.push({role: 'assistant', content: aiText});
     } catch (err){
       console.error('Chat error', err);
-      status.textContent = 'Network error.';
+      setStatus('statusNetworkError');
     }
   }
 
@@ -215,13 +371,17 @@
     form.addEventListener('submit', sendMsg);
     sendBtn.addEventListener('click', sendMsg);
 
-    themeBtn.addEventListener('click', () => {
-      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
-    });
+    if (themeBtn){
+      themeBtn.addEventListener('click', () => {
+        applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+      });
+    }
 
-    langSel.addEventListener('change', (event) => {
-      applyLanguage(event.target.value);
-    });
+    if (langSel){
+      langSel.addEventListener('change', (event) => {
+        applyLanguage(event.target.value);
+      });
+    }
 
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey){
