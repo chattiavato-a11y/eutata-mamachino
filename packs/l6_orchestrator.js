@@ -123,6 +123,67 @@ const setText = (node, lang, key, params) => {
 const setStatus = (ui, lang, key, params) => setText(ui?.statusEl, lang, key, params);
 const setWarn = (ui, lang, key, params) => setText(ui?.warnEl, lang, key, params);
 
+function clearWarnings(ui){
+  const warnEl = ui?.warnEl;
+  if (!warnEl) return;
+  delete warnEl.dataset.localeKey;
+  delete warnEl.dataset.localeParams;
+  warnEl.textContent = '';
+  warnEl.hidden = true;
+  warnEl.removeAttribute?.('data-severity');
+}
+
+function createGuardrailState({ lang } = {}){
+  return {
+    lang: lang || 'en',
+    warnings: [],
+    errors: [],
+    budget: {
+      softExceeded: false,
+      hardExceeded: false
+    },
+    blocked: false
+  };
+}
+
+function noteGuardrail(state, { severity = 'warn', key = null, message = '', params = null } = {}){
+  if (!state) return;
+  const entry = { severity, key, message, params };
+  state.warnings.push(entry);
+  if (severity === 'error'){
+    state.errors.push(entry);
+    state.blocked = true;
+  }
+  if (key === 'warnings.softCap' || key === 'warnings.softCapShort'){
+    state.budget.softExceeded = true;
+  }
+  if (key === 'warnings.sessionCap' || key === 'warnings.sessionCapHard'){
+    state.budget.hardExceeded = true;
+  }
+}
+
+function resolveGuardPayload(lang, payload, params){
+  if (!payload){
+    return { key: null, message: '', params: null };
+  }
+  if (typeof payload === 'string'){
+    if (payload.startsWith('warnings.') || payload.startsWith('status.')){
+      return { key: payload, message: translate(lang, payload, params), params: params || null };
+    }
+    return { key: null, message: payload, params: null };
+  }
+  if (typeof payload === 'object'){
+    const key = payload.key || null;
+    const mergedParams = payload.params ?? params ?? null;
+    if (key){
+      return { key, message: translate(lang, key, mergedParams), params: mergedParams };
+    }
+    const message = payload.message || '';
+    return { key: null, message, params: mergedParams };
+  }
+  return { key: null, message: String(payload), params: null };
+}
+
 const Budget = {
   soft: 75000,
   hard: 100000,
@@ -193,7 +254,7 @@ async function tryExtractive({ query, lang, ui, guardrails }){
     }
   };
   step();
-  return { ok:true, text, guardrails };
+  return { ok:true, text };
 }
 
 // Try WebLLM on GPU (only if low confidence)
@@ -220,8 +281,11 @@ async function tryWebGPU({ query, lang, ui, modelId, guard, guardrails }){
     onToken: (tok)=>{
       const t = Budget.approxTokens(tok);
       if (!Budget.canSpend(t)){
-        guardrails.budget.hardExceeded = true;
-        guardrails.blocked = true;
+        const projected = Budget.spent + t;
+        const key = projected > Budget.hard ? 'warnings.sessionCapHard' : 'warnings.sessionCap';
+        if (!guardrails.budget.hardExceeded){
+          noteGuardrail(guardrails, { severity: 'error', key });
+        }
         if (!budgetWarned){
           pushWarning(guardrails, ui, translate(lang, 'warnings.sessionCap'), 'error', { code: 'budget.hard', blocked: true });
           budgetWarned = true;
@@ -268,7 +332,9 @@ async function tryServer({ state, ui, guard }){
             const guardMessage = payload.message || payload.text || payload.warning || payload.error || payload.reason || '';
             const guardType = (payload.type || payload.kind || payload.guard || payload.guardrail || '').toString().toLowerCase();
             if (guardLevel || guardMessage || guardType === 'guard'){
-              if ((guardLevel || guardType) === 'error'){
+              const severity = (guardLevel || guardType) === 'error' ? 'error' : 'warn';
+              noteGuardrail(guardrails, { severity, message: guardMessage });
+              if (severity === 'error'){
                 guard?.error?.(guardMessage);
               } else {
                 guard?.warn?.(guardMessage);
@@ -301,7 +367,6 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
   const mode = state.mode || 'hybrid'; // 'local' | 'hybrid' | 'external'
   const lastUser = state.messages.filter(m=>m.role==='user').slice(-1)[0];
   const query = lastUser?.content || '';
-  const lang = state.lang || 'en';
 
   // Hard budget check upfront
   if (!Budget.canSpend(1)){
@@ -353,5 +418,6 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
 
   // 4) Local-only and nothing worked
   setStatus(ui, lang, 'status.noLocalAnswer');
+  return { source:'none', guardrails };
 }
 
