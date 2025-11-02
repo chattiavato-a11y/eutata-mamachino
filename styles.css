@@ -110,6 +110,29 @@ textarea:focus-visible{
   border-radius:10px;
   padding:10px;
 }
+.bar .mic-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  min-width:44px;
+  height:44px;
+  padding:0;
+  font-size:18px;
+  line-height:1;
+  transition:background .2s ease, outline-color .2s ease;
+}
+.bar .mic-btn[aria-pressed="true"]{
+  background:rgba(106,209,255,.16);
+  outline:2px solid var(--accent);
+}
+.bar .mic-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.bar .mic-btn .visually-hidden{
+  font-size:0;
+}
 .muted{
   color:var(--muted);
   font-size:12px;
@@ -129,6 +152,9 @@ textarea:focus-visible{
   color:#ff7b7b;
   font-size:13px;
   margin-top:6px;
+}
+#warn[hidden]{
+  display:none;
 }
 .policy-card{
   background:var(--card);

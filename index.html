@@ -49,10 +49,14 @@
             <div class="bar">
               <label class="visually-hidden" for="input">Chat message</label>
               <textarea id="input" placeholder="Type a message…" aria-label="Message input"></textarea>
+              <button id="micBtn" type="button" class="mic-btn" aria-pressed="false" aria-label="Start voice input" disabled>
+                <span aria-hidden="true">🎤</span>
+                <span class="visually-hidden">Start voice input</span>
+              </button>
               <button id="send" type="submit">Send</button>
             </div>
-            <div class="muted" id="status" role="status" aria-live="polite"></div>
-            <div class="bad" id="warn" role="alert"></div>
+            <div class="muted" id="status" role="status" aria-live="polite" data-status="idle">Ready.</div>
+            <div class="bad" id="warn" role="alert" hidden></div>
           </form>
         </div>
       </section>
@@ -107,65 +111,7 @@
   </form>
 </div>
 
-<script src="./shield.js"></script>
-<script type="module">
-import { routeChat } from './l6_orchestrator.js';
-
-const qs=(s)=>document.querySelector(s);
-const chat=qs('#chat'), inp=qs('#input'), send=qs('#send'), status=qs('#status'), warn=qs('#warn');
-const langSel=qs('#langSel'); const themeBtn=qs('#themeBtn'); const form=qs('#chatForm');
-const modeSel=qs('#modeSel'); const budgetHint=qs('#budgetHint');
-
-// Honeypot + state
-const hpInput = (()=>{ const hp=document.createElement('input'); hp.type='text'; hp.name='hp';
-  hp.tabIndex=-1; hp.ariaHidden='true'; hp.style.cssText='position:absolute;left:-5000px;width:1px;height:1px;opacity:0;'; form.appendChild(hp); return hp; })();
-
-const state={ messages:[], lang:'en', theme:'dark', csrf: csrfToken(), hp:'', mode:'hybrid', webllmModel:'Llama-3.1-8B-Instruct-q4f16_1' };
-
-function csrfToken(){ const k='shield.csrf'; let t=sessionStorage.getItem(k); if(!t){ t=randomId(24); sessionStorage.setItem(k,t);} return t; }
-function randomId(len=22){ const abc='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-'; let s=''; for(let i=0;i<len;i++) s+=abc[Math.floor(Math.random()*abc.length)]; return s; }
-
-function addMsg(role, text){ const d=document.createElement('div'); d.className='msg '+(role==='user'?'me':'ai');
-  d.textContent=text; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; return d; }
-
-themeBtn.onclick=()=>{ state.theme = state.theme==='dark'?'light':'dark';
-  document.documentElement.dataset.theme=state.theme; themeBtn.textContent=state.theme[0].toUpperCase()+state.theme.slice(1); };
-langSel.onchange=(e)=> state.lang = e.target.value;
-modeSel.onchange=(e)=> state.mode = e.target.value;
-
-// Budget hint updater (reads from server header or streaming text length via MutationObserver optional)
-// Simple timer polling for demo:
-setInterval(()=>{
-  // naive: count all assistant text chars and estimate tokens
-  const text = Array.from(document.querySelectorAll('.msg.ai')).map(n=>n.textContent||'').join('');
-  budgetHint.textContent = Math.ceil(text.length/4);
-}, 800);
-
-function scanAndSanitize(input, maxLen=2000){
-  const BIDI=/[\u202A-\u202E\u2066-\u2069\u200E\u200F\u061C\u200B-\u200D\uFEFF]/g, NULLS=/\x00/g;
-  const DANG=/\b(?:javascript|vbscript|file|data):/gi, TAGS=/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, ON=/\bon\w+\s*=/gi, CSSURL=/url\(\s*(['"]?)(.*?)\1\s*\)/gi, IMP=/@import\s+['"]?[^'"]+['"]?/gi;
-  const SUS=[/<script/i,/<\/script/i,/<iframe/i,/<object/i,/<embed/i,/<svg/i,/xlink:href/i,/onerror\s*=/i,/onload\s*=/i,/\.\.\//,/\b(select|union|insert|update|delete|drop)\b.*\bfrom\b/i,/\b(?:https?|ftp):\/\/[^\s]{2,}/i];
-  function norm(s){ try{ return s.normalize('NFKC'); }catch{ return s; } }
-  function scrub(s){ let out=s.replace(ON,'').replace(TAGS,'').replace(IMP,''); out=out.replace(CSSURL,(m,q,u)=>DANG.test((u||'').replace(/\s/g,''))?'url(about:blank)':m); out=out.replace(DANG,'about:blank:'); return out.replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  let t=String(input||''); t=norm(t).replace(BIDI,'').replace(NULLS,''); if(t.length>maxLen) t=t.slice(0,maxLen); t=scrub(t);
-  const txt=t.toLowerCase(); let score=0,hits=[]; for(const re of SUS){ if(re.test(txt)){ score+=10; hits.push(re.source);} }
-  const link=(txt.match(/\bhttps?:\/\//g)||[]).length; score+=Math.min(link*2,10); const ang=(t.match(/[<>]/g)||[]).length; score+=Math.min(ang,10);
-  const ok=score<12; return { ok, sanitized:t, reasons: ok?[]:hits.slice(0,6) };
-}
-
-async function sendMsg(){
-  const raw=(inp.value||'').trim(); if(!raw) return;
-  const v1=scanAndSanitize(raw); if(!v1.ok){ warn.textContent='Blocked input.'; return; }
-  warn.textContent=''; addMsg('user', v1.sanitized);
-  state.messages.push({role:'user', content:v1.sanitized, lang: state.lang}); inp.value='';
-
-  await routeChat({
-    state: { ...state, hp: hpInput.value||'' },
-    ui: { chatEl:chat, warnEl:warn, statusEl:status, addMsg }
-  });
-}
-
-  <script src="./shield.js" defer></script>
-  <script src="./app.js" defer></script>
+  <script src="./shield.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

@@ -14,6 +14,32 @@ const Budget = {
   note(n){ this.spent += Math.max(0, n|0); }
 };
 
+function createGuardEmitter(ui, { onGuardrailWarning, onGuardrailError } = {}){
+  const warnEl = ui?.warnEl;
+  const update = (level, message) => {
+    if (warnEl){
+      const text = message || '';
+      warnEl.textContent = text;
+      warnEl.hidden = !text;
+      if (text){
+        warnEl.dataset.severity = level;
+      } else {
+        warnEl.removeAttribute?.('data-severity');
+      }
+    }
+    if (level === 'error'){
+      onGuardrailError?.(message || '');
+    } else {
+      onGuardrailWarning?.(message || '');
+    }
+  };
+  return {
+    warn(message){ update('warn', message); },
+    error(message){ update('error', message); },
+    clear(){ update('warn', ''); update('error', ''); }
+  };
+}
+
 function groundedSystem({ lang, strong }){
   const ctx = (strong||[]).map(t => `[#${t.id}] ${t.text}`).join('\n');
   const policy = (lang==='es')
@@ -59,7 +85,7 @@ async function tryExtractive({ query, lang, ui }){
 }
 
 // Try WebLLM on GPU (only if low confidence)
-async function tryWebGPU({ query, lang, ui, modelId }){
+async function tryWebGPU({ query, lang, ui, modelId, guard }){
   ui.statusEl.textContent = 'Loading local model…';
   await WebLLM.load({
     model: modelId || 'Llama-3.1-8B-Instruct-q4f16_1',
@@ -90,7 +116,7 @@ async function tryWebGPU({ query, lang, ui, modelId }){
 }
 
 // Server fallback (/api/chat) with budget guard
-async function tryServer({ state, ui }){
+async function tryServer({ state, ui, guard }){
   ui.statusEl.textContent='Connecting…';
   const res = await fetch('/api/chat', {
     method:'POST',
@@ -108,24 +134,51 @@ async function tryServer({ state, ui }){
     for (const line of chunk.split('\n')){
       if(!line.startsWith('data: ')) continue;
       const data=line.slice(6); if(data==='[END]') break;
+      const trimmed = data.trim();
+      if (trimmed.startsWith('{')){
+        try {
+          const payload = JSON.parse(trimmed);
+          if (payload && typeof payload === 'object'){
+            const guardLevel = (payload.level || payload.severity || (payload.error && 'error') || (payload.warning && 'warn') || (payload.guard && payload.guard.level) || '').toLowerCase();
+            const guardMessage = payload.message || payload.text || payload.warning || payload.error || payload.reason || '';
+            const guardType = (payload.type || payload.kind || payload.guard || payload.guardrail || '').toString().toLowerCase();
+            if (guardLevel || guardMessage || guardType === 'guard'){
+              if ((guardLevel || guardType) === 'error'){
+                guard?.error?.(guardMessage);
+              } else {
+                guard?.warn?.(guardMessage);
+              }
+              continue;
+            }
+          }
+        } catch {
+          // fall through if JSON parse fails
+        }
+      }
       // budget guard on server stream too
-      if (!Budget.canSpend(Budget.approxTokens(data))) { ui.warnEl.textContent='Session token cap reached.'; continue; }
+      const approx = Budget.approxTokens(data);
+      if (!Budget.canSpend(approx)) {
+        guard?.warn?.('Session token cap reached.');
+        continue;
+      }
       text+=data; aiEl.textContent=text; ui.chatEl.scrollTop=ui.chatEl.scrollHeight;
-      Budget.note(Budget.approxTokens(data));
+      Budget.note(approx);
     }
   }
   ui.statusEl.textContent=`Ready. (≈${Budget.spent} tokens)`;
   return text;
 }
 
-export async function routeChat({ ui, state }){
+export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailError } = {}){
+  const guard = createGuardEmitter(ui, { onGuardrailWarning, onGuardrailError });
+  guard.clear?.();
   const mode = state.mode || 'hybrid'; // 'local' | 'hybrid' | 'external'
   const lastUser = state.messages.filter(m=>m.role==='user').slice(-1)[0];
   const query = lastUser?.content || '';
 
   // Hard budget check upfront
   if (!Budget.canSpend(1)){
-    ui.warnEl.textContent = 'Session token cap reached (100k).';
+    guard.warn('Session token cap reached (100k).');
     return;
   }
 
@@ -135,7 +188,7 @@ export async function routeChat({ ui, state }){
     state.messages.push({role:'assistant', content: ex.text});
     // Soft cap nudge
     if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
-      ui.warnEl.textContent = 'You are over the soft token cap (75k). Further generation will slow/trim.';
+      guard.warn('You are over the soft token cap (75k). Further generation will slow/trim.');
     }
     return;
   }
@@ -143,26 +196,27 @@ export async function routeChat({ ui, state }){
   // 2) Low confidence → try WebLLM/WebGPU if allowed by mode and GPU is available and budget permits
   if (mode !== 'external' && WebLLM.hasWebGPU() && Budget.canSpend(500)){ // need headroom
     try {
-      const text = await tryWebGPU({ query, lang: state.lang, ui, modelId: state.webllmModel });
+      const text = await tryWebGPU({ query, lang: state.lang, ui, modelId: state.webllmModel, guard });
       if (text){
         state.messages.push({role:'assistant', content: text});
         if (Budget.spent >= Budget.soft && Budget.spent < Budget.hard){
-          ui.warnEl.textContent = 'Soft cap exceeded (75k).';
+          guard.warn('Soft cap exceeded (75k).');
         }
         return;
       }
     } catch (e){
       // ignore and drop to server path
-      ui.warnEl.textContent = (String(e?.message||e).includes('webgpu'))
+      const message = (String(e?.message||e).includes('webgpu'))
         ? 'WebGPU unavailable; using server fallback.'
         : 'Local model not available; using server fallback.';
+      guard.warn(message);
     }
   }
 
   // 3) Server fallback if mode allows
   if (mode !== 'local'){
-    if (!Budget.canSpend(1000)){ ui.warnEl.textContent = 'Insufficient budget for server call.'; return; }
-    const text = await tryServer({ state, ui });
+    if (!Budget.canSpend(1000)){ guard.warn('Insufficient budget for server call.'); return; }
+    const text = await tryServer({ state, ui, guard });
     if (text) state.messages.push({role:'assistant', content: text});
     return;
   }
