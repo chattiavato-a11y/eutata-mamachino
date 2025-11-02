@@ -89,6 +89,7 @@ a:focus-visible{
   border-radius:10px;
   white-space:pre-wrap;
   word-break:break-word;
+  color:var(--ink);
 }
 .me{
   background:rgba(106,209,255,.08);
@@ -237,6 +238,14 @@ footer{
 .policy-dialog__content h2{
   margin:0;
   font-size:1.2rem;
+}
+.policy-dialog p{
+  margin:0;
+  color:var(--ink);
+  line-height:1.6;
+}
+.policy-dialog p + p{
+  margin-top:0.75rem;
 }
 .dialog-close{
   background:none;
