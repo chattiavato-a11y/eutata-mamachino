@@ -1,12 +1,14 @@
-'use strict';
+import { routeChat } from './packs/l6_orchestrator.js';
 
-(function(){
-  const qs = (sel) => document.querySelector(sel);
+(() => {
+  const qs = (selector, root = document) => root.querySelector(selector);
+
   const chat = qs('#chat');
   const input = qs('#input');
   const sendBtn = qs('#send');
-  const status = qs('#status');
-  const warn = qs('#warn');
+  const statusEl = qs('#status');
+  const warnEl = qs('#warn');
+  const micBtn = qs('#micBtn');
   const langSel = qs('#langSel');
   const themeBtn = qs('#themeBtn');
   const form = qs('#chatForm');
@@ -20,7 +22,7 @@
   const safeGet = (key) => {
     try {
       return window.localStorage.getItem(key);
-    } catch (err){
+    } catch (err) {
       console.warn('Storage get blocked', err);
       return null;
     }
@@ -29,7 +31,7 @@
   const safeSet = (key, value) => {
     try {
       window.localStorage.setItem(key, value);
-    } catch (err){
+    } catch (err) {
       console.warn('Storage set blocked', err);
     }
   };
@@ -164,31 +166,35 @@
   function applyTheme(theme){
     const normalized = theme === 'light' ? 'light' : 'dark';
     document.documentElement.dataset.theme = normalized;
-    if (themeBtn){
+    if (themeBtn) {
       themeBtn.textContent = normalized.charAt(0).toUpperCase() + normalized.slice(1);
       themeBtn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
     }
     safeSet(themeKey, normalized);
     state.theme = normalized;
-  }
+  };
 
-  function applyLanguage(lang){
+  const applyLanguage = (lang) => {
     const normalized = lang === 'es' ? 'es' : 'en';
-    if (langSel){
+    state.lang = normalized;
+    if (langSel) {
       langSel.value = normalized;
     }
     safeSet(langKey, normalized);
-    state.lang = normalized;
-  }
+    updateComposerCopy();
+  };
 
-  function addMessage(role, text){
+  const addMessage = (role, text) => {
+    if (!chat) {
+      return null;
+    }
     const div = document.createElement('div');
     div.className = 'msg ' + (role === 'user' ? 'me' : 'ai');
     div.textContent = text;
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
     return div;
-  }
+  };
 
   function clientCheck(text){
     const check = Shield.scanAndSanitize(text, {maxLen: 2000, threshold: 12});
@@ -196,31 +202,176 @@
       warn.textContent = `Blocked by client guardrails. Reasons: ${check.reasons.join(', ')}`;
       return {ok:false};
     }
-    warn.textContent = '';
-    return {ok:true, sanitized: check.sanitized};
-  }
+    if (!audioModulePromise) {
+      audioModulePromise = import('./packs/l4_audio.js')
+        .then((mod) => {
+          audioModule = mod.L4Audio;
+          if (micBtn) {
+            micBtn.disabled = micUnavailable();
+            if (!audioModule.hasSTT) {
+              updateMicLabel(false);
+              setVoiceStatus('unsupported');
+            }
+          }
+          return audioModule;
+        })
+        .catch((err) => {
+          console.error('Failed to load audio module', err);
+          if (micBtn) {
+            micBtn.disabled = true;
+          }
+          setVoiceStatus('error');
+          return null;
+        });
+    }
+    return audioModulePromise;
+  };
 
-  async function sendMsg(evt){
-    if (evt){
+  const startRecording = async () => {
+    if (!micBtn || isRecording || isLoadingAudio) {
+      return;
+    }
+    isLoadingAudio = true;
+    micBtn.disabled = true;
+    try {
+      const audio = await ensureAudioModule();
+      if (!audio || !audio.hasSTT) {
+        return;
+      }
+      micBtn.disabled = micUnavailable();
+      isRecording = true;
+      updateMicVisual(true);
+      updateMicLabel(true);
+      setVoiceStatus('listening');
+      stopListening = audio.listen({
+        lang: state.lang,
+        onResult: (text, isFinal) => {
+          const sanitizer = window.Shield?.baseSanitize;
+          const safeText = typeof sanitizer === 'function' ? sanitizer(text, 512) : (text || '');
+          if (typeof safeText === 'string') {
+            if (input) {
+              input.value = safeText;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.focus();
+              const len = safeText.length;
+              if (typeof input.setSelectionRange === 'function') {
+                input.setSelectionRange(len, len);
+              }
+            }
+            if (!isFinal && safeText.trim()) {
+              setVoiceStatus('partial', { text: safeText });
+            }
+            if (isFinal) {
+              setVoiceStatus('idle');
+            }
+          }
+        },
+        onEnd: () => {
+          isRecording = false;
+          stopListening = null;
+          updateMicVisual(false);
+          updateMicLabel(false);
+          if (voiceOwnsStatus) {
+            setVoiceStatus('idle');
+          }
+        },
+      });
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      setVoiceStatus('error');
+    } finally {
+      micBtn.disabled = micUnavailable();
+      updateMicLabel(isRecording);
+      isLoadingAudio = false;
+    }
+  };
+
+  const stopRecording = ({ updateStatus = true } = {}) => {
+    if (stopListening) {
+      try {
+        stopListening();
+      } catch (err) {
+        console.warn('Error stopping recorder', err);
+      }
+      stopListening = null;
+    }
+    isRecording = false;
+    updateMicVisual(false);
+    micBtn.disabled = micUnavailable();
+    updateMicLabel(false);
+    if (updateStatus) {
+      setVoiceStatus('idle');
+    }
+  };
+
+  const handleMicToggle = () => {
+    if (!micBtn) {
+      return;
+    }
+    if (isRecording) {
+      stopRecording();
+      return;
+    }
+    startRecording();
+  };
+
+  const clientCheck = (text) => {
+    if (!text) {
+      return { ok: false, sanitized: '' };
+    }
+    const scan = window.Shield?.scanAndSanitize
+      ? window.Shield.scanAndSanitize(text, { maxLen: 2000, threshold: 12 })
+      : { ok: true, sanitized: text };
+    if (!scan.ok) {
+      const strings = getStrings().composer;
+      const message = scan.reasons && scan.reasons.length
+        ? format(strings.blockedReasons, { reasons: scan.reasons.join(', ') })
+        : strings.blocked;
+      setWarning(message, 'error');
+      return { ok: false, sanitized: '' };
+    }
+    return { ok: true, sanitized: scan.sanitized };
+  };
+
+  const ensureChatReady = () => {
+    if (!form || !input || !sendBtn || !chat) {
+      console.error('Critical UI elements missing; aborting init.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleGuard = (message, severity) => {
+    setWarning(message, severity);
+  };
+
+  const sendMsg = async (evt) => {
+    if (evt) {
       evt.preventDefault();
     }
+    if (!ensureChatReady()) {
+      return;
+    }
+    if (isRecording) {
+      stopRecording({ updateStatus: false });
+    }
     const raw = (input.value || '').trim();
-    if (!raw){
+    if (!raw) {
       return;
     }
 
     const firstPass = clientCheck(raw);
-    if (!firstPass.ok){
+    if (!firstPass.ok) {
       return;
     }
 
-    const sanitized = firstPass.sanitized;
-    addMessage('user', sanitized);
-    state.messages.push({role: 'user', content: sanitized, lang: state.lang});
+    setWarning('');
+    addMessage('user', firstPass.sanitized);
+    state.messages.push({ role: 'user', content: firstPass.sanitized, lang: state.lang });
     input.value = '';
 
-    const secondPass = clientCheck(sanitized);
-    if (!secondPass.ok){
+    const secondPass = clientCheck(firstPass.sanitized);
+    if (!secondPass.ok) {
       return;
     }
 
@@ -319,14 +470,14 @@
       console.error('Chat error', err);
       status.textContent = 'Network error.';
     }
-  }
+  };
 
   function initHoneypot(){
     if (!form || !Shield.attachHoneypot){
       return;
     }
-    state.hpField = Shield.attachHoneypot(form);
-  }
+    state.hpField = window.Shield.attachHoneypot(form);
+  };
 
   function initFooter(){
     const now = new Date();
@@ -337,7 +488,39 @@
     if (footerCopy){
       footerCopy.textContent = `© ${year} ShieldOps Consortium · Trademarks belong to their respective owners.`;
     }
-  }
+    const now = new Date();
+    copyrightYear.textContent = String(now.getFullYear());
+  };
+
+  const initBudgetHint = () => {
+    if (!budgetHint) {
+      return;
+    }
+    setInterval(() => {
+      const text = Array.from(document.querySelectorAll('.msg.ai'))
+        .map((node) => node.textContent || '')
+        .join('');
+      budgetHint.textContent = String(Math.ceil(text.length / 4));
+    }, 800);
+  };
+
+  const initMic = () => {
+    if (!micBtn) {
+      return;
+    }
+    micBtn.disabled = micUnavailable();
+    updateMicLabel(false);
+    if (!speechSupported) {
+      setVoiceStatus('unsupported');
+      return;
+    }
+    micBtn.addEventListener('click', handleMicToggle);
+    const warm = () => {
+      ensureAudioModule().catch(() => {});
+    };
+    micBtn.addEventListener('pointerenter', warm, { once: true });
+    micBtn.addEventListener('focus', warm, { once: true });
+  };
 
   function initPolicyDialogs(){
     dialogTriggers.forEach((trigger) => {
@@ -400,15 +583,19 @@
       });
     }
 
+    modeSel?.addEventListener('change', (event) => {
+      state.mode = event.target.value;
+    });
+
     input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey){
+      if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMsg();
       }
     });
-  }
+  };
 
-  if (document.readyState === 'loading'){
+  if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();

@@ -56,6 +56,10 @@
             <div class="bar">
               <label class="visually-hidden" for="input">Chat message</label>
               <textarea id="input" placeholder="Type a message…" aria-label="Message input"></textarea>
+              <button id="micBtn" type="button" class="mic-btn" aria-pressed="false" aria-label="Start voice input" disabled>
+                <span aria-hidden="true">🎤</span>
+                <span class="visually-hidden">Start voice input</span>
+              </button>
               <button id="send" type="submit">Send</button>
             </div>
             <div class="muted" id="status" role="status" aria-live="polite"></div>
