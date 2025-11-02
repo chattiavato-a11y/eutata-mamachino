@@ -5,6 +5,38 @@
 import { L5Local } from './l5_local_llm.js';
 import { WebLLM } from './l5_webllm.js';
 
+const translate = (lang, key, params) => {
+  const api = window.I18N;
+  if (api && typeof api.t === 'function'){
+    return api.t(lang, key, params);
+  }
+  return key;
+};
+
+const setText = (node, lang, key, params) => {
+  if (!node) return;
+  if (!key){
+    delete node.dataset.localeKey;
+    delete node.dataset.localeParams;
+    node.textContent = '';
+    return;
+  }
+  node.dataset.localeKey = key;
+  if (params && Object.keys(params).length){
+    try {
+      node.dataset.localeParams = JSON.stringify(params);
+    } catch {
+      node.dataset.localeParams = '';
+    }
+  } else {
+    delete node.dataset.localeParams;
+  }
+  node.textContent = translate(lang, key, params);
+};
+
+const setStatus = (ui, lang, key, params) => setText(ui?.statusEl, lang, key, params);
+const setWarn = (ui, lang, key, params) => setText(ui?.warnEl, lang, key, params);
+
 const Budget = {
   soft: 75000,
   hard: 100000,
@@ -65,11 +97,11 @@ async function deriveStrong({ query, lang }){
 
 // Try local extractive (L5). Returns {ok, text} or {ok:false}
 async function tryExtractive({ query, lang, ui }){
-  ui.statusEl.textContent = 'Thinking locally…';
+  setStatus(ui, lang, 'status.thinkingLocal');
   const text = await L5Local.draft({ query, lang, bm25Min:0.6, coverageNeeded:2 });
   if (!text) return { ok:false };
   // stream locally (simulated) and budget
-  ui.statusEl.textContent = 'Streaming (local)…';
+  setStatus(ui, lang, 'status.streamingLocal');
   const aiEl = ui.addMsg('assistant','');
   let i=0; const step = () => {
     if (i < text.length){
@@ -77,7 +109,7 @@ async function tryExtractive({ query, lang, ui }){
       return setTimeout(step, 8);
     } else {
       const toks = Budget.approxTokens(text); Budget.note(toks);
-      ui.statusEl.textContent = `Ready. (≈${Budget.spent} tokens)`;
+      setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
       return;
     }
   }; step();
@@ -89,13 +121,16 @@ async function tryWebGPU({ query, lang, ui, modelId, guard }){
   ui.statusEl.textContent = 'Loading local model…';
   await WebLLM.load({
     model: modelId || 'Llama-3.1-8B-Instruct-q4f16_1',
-    progress: (p)=>{ ui.statusEl.textContent = `Loading local model… ${Math.round((p?.progress||0)*100)}%`; }
+    progress: (p)=>{
+      const percent = Math.round((p?.progress||0)*100);
+      setStatus(ui, lang, 'status.loadingLocalModelProgress', { percent });
+    }
   });
 
   const strong = await deriveStrong({ query, lang });
   const sys = groundedSystem({ lang, strong });
 
-  ui.statusEl.textContent = 'Streaming (local GPU)…';
+  setStatus(ui, lang, 'status.streamingLocalGpu');
   const aiEl = ui.addMsg('assistant','');
   let tokensStreamed = 0;
   const out = await WebLLM.generate({
@@ -111,7 +146,7 @@ async function tryWebGPU({ query, lang, ui, modelId, guard }){
     }
   });
   Budget.note(tokensStreamed);
-  ui.statusEl.textContent = `Ready. (≈${Budget.spent} tokens)`;
+  setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
   return out;
 }
 
@@ -123,9 +158,9 @@ async function tryServer({ state, ui, guard }){
     headers:{ 'Content-Type':'application/json','X-CSRF':state.csrf, 'X-Session-Tokens-Spent': String(Budget.spent) },
     body: JSON.stringify({ messages: state.messages.slice(-16), lang: state.lang, csrf: state.csrf, hp: state.hp||'' })
   });
-  if (!res.ok || !res.body){ ui.statusEl.textContent='Server error.'; return ''; }
+  if (!res.ok || !res.body){ setStatus(ui, lang, 'status.serverError'); return ''; }
 
-  ui.statusEl.textContent='Streaming…';
+  setStatus(ui, lang, 'status.streaming');
   const reader=res.body.getReader(); const dec=new TextDecoder();
   const aiEl=ui.addMsg('assistant',''); let text='';
   while(true){
@@ -165,7 +200,7 @@ async function tryServer({ state, ui, guard }){
       Budget.note(approx);
     }
   }
-  ui.statusEl.textContent=`Ready. (≈${Budget.spent} tokens)`;
+  setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
   return text;
 }
 
@@ -175,6 +210,7 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
   const mode = state.mode || 'hybrid'; // 'local' | 'hybrid' | 'external'
   const lastUser = state.messages.filter(m=>m.role==='user').slice(-1)[0];
   const query = lastUser?.content || '';
+  const lang = state.lang || 'en';
 
   // Hard budget check upfront
   if (!Budget.canSpend(1)){
@@ -222,6 +258,6 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
   }
 
   // 4) Local-only and nothing worked
-  ui.statusEl.textContent = 'No local answer available.';
+  setStatus(ui, lang, 'status.noLocalAnswer');
 }
 
