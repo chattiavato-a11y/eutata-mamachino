@@ -10,18 +10,10 @@
   const langSel = qs('#langSel');
   const themeBtn = qs('#themeBtn');
   const form = qs('#chatForm');
-  const tokenMeter = qs('#tokenMeter');
-  const tokenProgress = qs('#tokenProgress');
-  const tokenValue = qs('#tokenValue');
-  const minuteMeter = qs('#minuteMeter');
-  const minuteProgress = qs('#minuteProgress');
-  const minuteValue = qs('#minuteValue');
-  const cookieBanner = qs('#cookieBanner');
-  const acceptCookies = qs('#acceptCookies');
-  const declineCookies = qs('#declineCookies');
   const copyrightYear = qs('#copyrightYear');
+  const footerCopy = qs('#footerCopy');
+  const dialogTriggers = document.querySelectorAll('[data-dialog-target]');
 
-  const consentKey = 'shield.cookies';
   const themeKey = 'shield.theme';
   const langKey = 'shield.lang';
 
@@ -49,7 +41,6 @@
     lang: safeGet(langKey) || 'en',
     theme: safeGet(themeKey) || (prefersLight ? 'light' : 'dark'),
     csrf: Shield.csrfToken(),
-    analytics: safeGet(consentKey) === 'all',
   };
 
   const usage = {
@@ -247,7 +238,6 @@
           lang: state.lang,
           csrf: state.csrf,
           hp: (state.hpField && state.hpField.value) || '',
-          analytics: state.analytics,
         }),
       });
 
@@ -331,28 +321,6 @@
     }
   }
 
-  function initCookieBanner(){
-    if (!cookieBanner || !acceptCookies || !declineCookies){
-      return;
-    }
-    const stored = safeGet(consentKey);
-    if (!stored){
-      cookieBanner.classList.remove('hidden');
-    }
-
-    acceptCookies.addEventListener('click', () => {
-      safeSet(consentKey, 'all');
-      state.analytics = true;
-      cookieBanner.classList.add('hidden');
-    });
-
-    declineCookies.addEventListener('click', () => {
-      safeSet(consentKey, 'essential');
-      state.analytics = false;
-      cookieBanner.classList.add('hidden');
-    });
-  }
-
   function initHoneypot(){
     if (!form || !Shield.attachHoneypot){
       return;
@@ -361,19 +329,56 @@
   }
 
   function initFooter(){
+    const now = new Date();
+    const year = String(now.getFullYear());
     if (copyrightYear){
-      const now = new Date();
-      copyrightYear.textContent = String(now.getFullYear());
+      copyrightYear.textContent = year;
     }
+    if (footerCopy){
+      footerCopy.textContent = `© ${year} ShieldOps Consortium · Trademarks belong to their respective owners.`;
+    }
+  }
+
+  function initPolicyDialogs(){
+    dialogTriggers.forEach((trigger) => {
+      const targetId = trigger.getAttribute('data-dialog-target');
+      const dialog = targetId ? document.getElementById(targetId) : null;
+      if (!dialog){
+        return;
+      }
+
+      trigger.addEventListener('click', () => {
+        if (typeof dialog.showModal === 'function'){
+          dialog.showModal();
+        } else {
+          dialog.setAttribute('open', '');
+        }
+      });
+
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog && typeof dialog.close === 'function'){
+          dialog.close('backdrop');
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-dialog-close]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        const dialog = btn.closest('dialog');
+        if (dialog && typeof dialog.close === 'function'){
+          event.preventDefault();
+          dialog.close('button');
+        }
+      });
+    });
   }
 
   function init(){
     applyTheme(state.theme);
     applyLanguage(state.lang);
-    initCookieBanner();
     initHoneypot();
     initFooter();
-    renderUsage();
+    initPolicyDialogs();
 
     if (!form || !input || !sendBtn || !chat){
       console.error('Critical UI elements missing; aborting init.');
@@ -383,13 +388,17 @@
     form.addEventListener('submit', sendMsg);
     sendBtn.addEventListener('click', sendMsg);
 
-    themeBtn.addEventListener('click', () => {
-      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
-    });
+    if (themeBtn){
+      themeBtn.addEventListener('click', () => {
+        applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+      });
+    }
 
-    langSel.addEventListener('change', (event) => {
-      applyLanguage(event.target.value);
-    });
+    if (langSel){
+      langSel.addEventListener('change', (event) => {
+        applyLanguage(event.target.value);
+      });
+    }
 
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey){
