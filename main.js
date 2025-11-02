@@ -71,9 +71,6 @@ function setLocalizedText(node, key, params, { html = false } = {}){
     delete node.dataset.localeParams;
     delete node.dataset.localeHtml;
     node.textContent = '';
-    if (html){
-      node.innerHTML = '';
-    }
     if (node === warnEl){
       node.hidden = true;
     }
@@ -89,16 +86,9 @@ function setLocalizedText(node, key, params, { html = false } = {}){
   } else {
     delete node.dataset.localeParams;
   }
-  if (html){
-    node.dataset.localeHtml = 'true';
-    node.innerHTML = translate(key, params);
-  } else {
-    delete node.dataset.localeHtml;
-    node.textContent = translate(key, params);
-  }
+  node.textContent = translate(key, params);
   if (node === warnEl){
-    const content = node.dataset.localeHtml === 'true' ? node.innerHTML : node.textContent;
-    node.hidden = !content;
+    node.hidden = !node.textContent;
   }
 }
 
@@ -146,7 +136,7 @@ function applyTheme(theme, { persist = true } = {}){
   themeButtons.forEach((btn) => {
     btn.textContent = translate(labelKey);
     btn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
-    btn.setAttribute('aria-label', translate(actionKey));
+    btn.setAttribute('aria-label', translate(labelKey));
   });
   if (persist){
     safeSet(themeKey, normalized);
