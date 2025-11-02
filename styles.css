@@ -89,6 +89,7 @@ a:focus-visible{
   border-radius:10px;
   white-space:pre-wrap;
   word-break:break-word;
+  color:var(--ink);
 }
 .me{
   background:rgba(106,209,255,.08);
@@ -238,6 +239,14 @@ footer{
   margin:0;
   font-size:1.2rem;
 }
+.policy-dialog p{
+  margin:0;
+  color:var(--ink);
+  line-height:1.6;
+}
+.policy-dialog p + p{
+  margin-top:0.75rem;
+}
 .dialog-close{
   background:none;
   border:none;
@@ -250,6 +259,49 @@ footer{
 .dialog-close:focus-visible{
   color:var(--accent);
   outline:none;
+}
+.session-meters{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+.session-meter{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 12px;
+  border-radius:999px;
+  border:1px solid #242634;
+  background:var(--card);
+  font-size:12px;
+}
+.session-meter progress{
+  width:120px;
+  height:6px;
+  border-radius:999px;
+  overflow:hidden;
+  background:rgba(255,255,255,.08);
+}
+.session-meter progress::-webkit-progress-bar{
+  background:rgba(255,255,255,.08);
+  border-radius:999px;
+}
+.session-meter progress::-webkit-progress-value{
+  background:var(--accent);
+  border-radius:999px;
+}
+.session-meter progress::-moz-progress-bar{
+  background:var(--accent);
+  border-radius:999px;
+}
+.session-meter-value{
+  font-variant-numeric:tabular-nums;
+  color:var(--ink);
+}
+.hidden{
+  display:none !important;
 }
 @media (max-width:600px){
   header{
