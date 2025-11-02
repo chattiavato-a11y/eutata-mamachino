@@ -67,6 +67,9 @@ function setLocalizedText(node, key, params){
     delete node.dataset.localeKey;
     delete node.dataset.localeParams;
     node.textContent = '';
+    if (node === warnEl){
+      node.hidden = true;
+    }
     return;
   }
   node.dataset.localeKey = key;
@@ -80,6 +83,9 @@ function setLocalizedText(node, key, params){
     delete node.dataset.localeParams;
   }
   node.textContent = translate(key, params);
+  if (node === warnEl){
+    node.hidden = !node.textContent;
+  }
 }
 
 function refreshDynamicLocale(){
@@ -112,9 +118,11 @@ function applyTheme(theme, { persist = true } = {}){
   const normalized = theme === 'light' ? 'light' : 'dark';
   document.documentElement.dataset.theme = normalized;
   const labelKey = normalized === 'dark' ? 'controls.themeDark' : 'controls.themeLight';
+  const actionKey = normalized === 'dark' ? 'controls.themeToggleToLight' : 'controls.themeToggleToDark';
   themeButtons.forEach((btn) => {
     btn.textContent = translate(labelKey);
     btn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
+    btn.setAttribute('aria-label', translate(actionKey));
   });
   if (persist){
     safeSet(themeKey, normalized);
@@ -276,6 +284,9 @@ function init(){
   applyTheme(state.theme, { persist: false });
   if (statusEl){
     setLocalizedText(statusEl, 'status.idle');
+  }
+  if (warnEl){
+    warnEl.hidden = true;
   }
   initCookieBanner();
   initFooter();
