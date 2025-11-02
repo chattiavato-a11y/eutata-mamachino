@@ -13,7 +13,13 @@
   .toggles{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   button,select{background:var(--card);color:var(--ink);border:1px solid #242634;border-radius:10px;padding:8px 12px}
   button:hover{outline:2px solid var(--ring)}
-  .pill{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #242634;background:var(--card)}
+  .session-meters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .session-meter{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid #242634;background:var(--card);font-size:12px}
+  .session-meter progress{width:120px;height:6px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08)}
+  .session-meter progress::-webkit-progress-bar{background:rgba(255,255,255,.08);border-radius:999px}
+  .session-meter progress::-webkit-progress-value{background:var(--accent);border-radius:999px}
+  .session-meter progress::-moz-progress-bar{background:var(--accent);border-radius:999px}
+  .session-meter-value{font-variant-numeric:tabular-nums;color:var(--ink)}
   .chat{background:var(--card);border:1px solid #242634;border-radius:14px;padding:14px;height:60vh;overflow:auto}
   .msg{margin:8px 0;padding:10px 12px;border-radius:10px;white-space:pre-wrap}
   .me{background:rgba(106,209,255,.08);border:1px solid rgba(106,209,255,.25)}
@@ -44,7 +50,7 @@
     <main>
       <section aria-labelledby="chat-title">
         <div class="policy-card">
-          <h2 id="chat-title">Chattia</h2>
+          <h2 id="chat-title">Session Console</h2>
           <form id="chatForm" novalidate>
             <div id="chat" class="chat" role="log" aria-live="polite"></div>
             <div class="bar">
@@ -54,6 +60,18 @@
             </div>
             <div class="muted" id="status" role="status" aria-live="polite"></div>
             <div class="bad" id="warn" role="alert"></div>
+            <div class="session-meters" id="usageMeters" aria-live="polite">
+              <div class="session-meter" id="tokenMeter" role="status">
+                <span class="muted">Token use</span>
+                <progress id="tokenProgress" value="0" max="1" aria-label="Token usage"></progress>
+                <span class="session-meter-value" id="tokenValue">0</span>
+              </div>
+              <div class="session-meter hidden" id="minuteMeter" role="status">
+                <span class="muted">Minutes</span>
+                <progress id="minuteProgress" value="0" max="1" aria-label="Minute usage"></progress>
+                <span class="session-meter-value" id="minuteValue">0</span>
+              </div>
+            </div>
           </form>
         </div>
       </section>
@@ -103,7 +121,7 @@
     </form>
   </dialog>
 
-  <script src="./shield.js" defer></script>
-  <script src="./app.js" defer></script>
+<script src="./shield.js" defer></script>
+<script src="./app.js" defer></script>
 </body>
 </html>
