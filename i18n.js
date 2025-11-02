@@ -69,7 +69,8 @@
       'warnings.serverBudget': 'Insufficient budget for server call.'
     },
     es: {
-      'header.title': 'Interfaz de Chat OPS',
+      'header.title': 'Interfaz de chat OPS',
+      'chat.title': 'Consola de sesión',
       'controls.themeLabel': 'Tema',
       'controls.languageLabel': 'Idioma',
       'controls.modeLabel': 'Modo',
@@ -85,7 +86,7 @@
       'controls.mode.external': 'Solo externo',
       'controls.micStart': 'Iniciar entrada de voz',
       'controls.micStop': 'Detener entrada de voz',
-      'controls.tokensLabel': 'Tokens de sesión:',
+      'controls.tokensLabel': 'Uso de tokens:',
       'language.option.en': 'Inglés',
       'language.option.es': 'Español',
       'cookie.remind': 'Recuérdame más tarde',
@@ -122,7 +123,7 @@
       'voice.status.listening': 'Escuchando…',
       'voice.status.partial': 'Se oyó: {text}',
       'voice.status.playing': 'Reproduciendo respuesta…',
-      'voice.status.playback': 'Reproducción disponible (micrófono no detectado).',
+      'voice.status.playback': 'Reproducción de voz lista (micrófono no disponible).',
       'voice.status.unsupported': 'Los controles de voz no son compatibles en este navegador.',
       'voice.status.error': 'Error en el control de voz.',
       'warnings.blockedInput': 'Entrada bloqueada.',

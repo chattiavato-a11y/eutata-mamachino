@@ -49,13 +49,14 @@ function safeSet(key, value){
 
 const state = {
   messages: [],
-  lang: safeGet(langKey) || 'en',
+  lang: safeGet(langKey) || 'es',
   theme: safeGet(themeKey) || (prefersLight ? 'light' : 'dark'),
   mode: safeGet(modeKey) || 'hybrid',
   csrf: window.Shield.csrfToken(),
   hp: '',
   analytics: safeGet(consentKey) === 'all',
-  webllmModel: 'Llama-3.1-8B-Instruct-q4f16_1'
+  webllmModel: 'Llama-3.1-8B-Instruct-q4f16_1',
+  wiringLog: []
 };
 
 const honeypotField = form && window.Shield.attachHoneypot ? window.Shield.attachHoneypot(form) : null;
@@ -66,6 +67,104 @@ let stopListening = null;
 let isRecording = false;
 let lastSpokenText = '';
 const voicePreviewLimit = 80;
+
+function updateSendAvailability(){
+  if (!sendBtn || !input){
+    return;
+  }
+  const trimmed = (input.value || '').trim();
+  const canSend = Boolean(trimmed);
+  sendBtn.disabled = !canSend;
+  if (form){
+    form.classList.toggle('can-send', canSend);
+  }
+  input.dataset.hasValue = canSend ? 'true' : 'false';
+}
+
+function handleInputKeydown(event){
+  if (event.key === 'Enter' && !event.shiftKey){
+    event.preventDefault();
+    if (!sendBtn?.disabled){
+      sendMessage();
+    }
+  }
+}
+
+function handleInputChange(){
+  updateSendAvailability();
+}
+
+function handleThemeToggle(event){
+  event?.preventDefault?.();
+  applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+}
+
+function handleLanguageChange(event){
+  const value = event?.target?.value;
+  if (value){
+    applyLanguage(value);
+  }
+}
+
+function handleModeChange(event){
+  const value = event?.target?.value;
+  if (value){
+    applyMode(value);
+  }
+}
+
+function recordWiring(registry){
+  if (!Array.isArray(registry)){
+    return;
+  }
+  state.wiringLog = registry;
+  if (typeof window !== 'undefined' && typeof window.console === 'object'){
+    console.debug('[Cableado Shield]', registry);
+  }
+}
+
+function wireConfigurations(configs){
+  const handlerMap = {
+    sendMessage,
+    handleInputKeydown,
+    handleInputChange,
+    handleThemeToggle,
+    handleLanguageChange,
+    handleModeChange
+  };
+  const registry = [];
+
+  configs.forEach((config) => {
+    if (!config) return;
+    const selector = config.link;
+    const isNodeCollection = typeof NodeList !== 'undefined' && selector instanceof NodeList;
+    const elements = typeof selector === 'string'
+      ? Array.from(document.querySelectorAll(selector))
+      : Array.isArray(selector) || isNodeCollection
+        ? Array.from(selector).filter(Boolean)
+        : selector
+          ? [selector]
+          : [];
+    if (!elements.length) return;
+    const handler = handlerMap[config.function];
+    if (typeof handler !== 'function') return;
+
+    elements.forEach((element) => {
+      element.addEventListener(config.trigger, handler);
+      const linkDescriptor = selector || (element.id ? `#${element.id}` : element.tagName.toLowerCase());
+      registry.push({
+        reference: config.reference,
+        link: linkDescriptor,
+        trigger: config.trigger,
+        action: config.action,
+        function: handler.name || config.function || 'anonymous'
+      });
+    });
+  });
+
+  recordWiring(registry);
+  return registry;
+}
 
 function translate(key, params){
   if (window.I18N && typeof window.I18N.t === 'function'){
@@ -198,7 +297,7 @@ function ensureAudioModule(){
         return audioModule;
       })
       .catch((err) => {
-        console.error('Failed to load audio module', err);
+        console.error('No se pudo cargar el módulo de audio', err);
         audioModule = null;
         updateMicButton();
         return null;
@@ -264,7 +363,7 @@ async function startRecording(){
         setVoiceStatus(getIdleVoiceKey());
       },
       onError: (event) => {
-        console.error('Speech recognition error', event);
+        console.error('Error de reconocimiento de voz', event);
         isRecording = false;
         stopListening = null;
         updateMicButton();
@@ -272,7 +371,7 @@ async function startRecording(){
       }
     });
   } catch (err){
-    console.error('Failed to start voice capture', err);
+    console.error('No se pudo iniciar la captura de voz', err);
     isRecording = false;
     stopListening = null;
     updateMicButton();
@@ -285,7 +384,7 @@ function stopRecording({ setIdle = true } = {}){
     try {
       stopListening();
     } catch (err){
-      console.warn('Error stopping voice capture', err);
+      console.warn('Error al detener la captura de voz', err);
     }
     stopListening = null;
   }
@@ -304,7 +403,7 @@ function handleMicToggle(){
     return;
   }
   startRecording().catch((err) => {
-    console.error('Voice start error', err);
+    console.error('Error al iniciar la voz', err);
     setVoiceStatus('voice.status.error');
   });
 }
@@ -323,7 +422,7 @@ async function maybeSpeakAssistant(text){
       }
     },
     onerror: (event) => {
-      console.error('Speech synthesis error', event);
+      console.error('Error de síntesis de voz', event);
       if (!isRecording){
         setVoiceStatus('voice.status.error');
       }
@@ -352,7 +451,7 @@ function initVoiceControls(){
         setVoiceStatus(getIdleVoiceKey());
       })
       .catch((err) => {
-        console.error('Voice warmup failed', err);
+        console.error('El calentamiento de voz falló', err);
         setVoiceStatus('voice.status.error');
       });
   };
@@ -367,7 +466,7 @@ function initVoiceControls(){
       setVoiceStatus(getIdleVoiceKey());
     })
     .catch((err) => {
-      console.error('Voice init error', err);
+      console.error('Error al iniciar los controles de voz', err);
       setVoiceStatus('voice.status.error');
     });
 }
@@ -398,7 +497,7 @@ function applyTheme(theme, { persist = true } = {}){
 }
 
 function applyLanguage(lang, { persist = true } = {}){
-  const normalized = lang === 'es' ? 'es' : 'en';
+  const normalized = ['es', 'en'].includes(lang) ? lang : 'es';
   state.lang = normalized;
   document.documentElement.lang = normalized;
   if (persist){
@@ -461,6 +560,7 @@ async function sendMessage(event){
   addMessage('user', sanitized);
   state.messages.push({ role: 'user', content: sanitized, lang: state.lang });
   input.value = '';
+  updateSendAvailability();
 
   state.hp = honeypotField ? honeypotField.value || '' : '';
   const assistantBefore = state.messages.filter((message) => message.role === 'assistant').length;
@@ -480,7 +580,7 @@ async function sendMessage(event){
     if (latest && latest.content && latest.content !== lastSpokenText){
       lastSpokenText = latest.content;
       maybeSpeakAssistant(latest.content).catch((err) => {
-        console.error('Speech synthesis failed', err);
+        console.error('La síntesis de voz falló', err);
       });
     }
   }
@@ -585,36 +685,64 @@ function initDialogs(){
 
 function bindEvents(){
   if (!form || !chat || !input || !sendBtn || !statusEl || !warnEl){
-    console.error('Critical UI elements missing; aborting init.');
+    console.error('Faltan elementos críticos de la interfaz; se aborta la inicialización.');
     return;
   }
 
-  form.addEventListener('submit', sendMessage);
-  sendBtn.addEventListener('click', sendMessage);
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey){
-      event.preventDefault();
-      sendMessage();
+  const configurations = [
+    {
+      reference: 'chatForm.submit',
+      link: '#chatForm',
+      trigger: 'submit',
+      action: 'message.submit',
+      function: 'sendMessage'
+    },
+    {
+      reference: 'sendButton.click',
+      link: '#send',
+      trigger: 'click',
+      action: 'message.click',
+      function: 'sendMessage'
+    },
+    {
+      reference: 'input.keydown',
+      link: '#input',
+      trigger: 'keydown',
+      action: 'message.enter',
+      function: 'handleInputKeydown'
+    },
+    {
+      reference: 'input.change',
+      link: '#input',
+      trigger: 'input',
+      action: 'input.toggleSend',
+      function: 'handleInputChange'
+    },
+    {
+      reference: 'theme.toggle',
+      link: '[data-action="toggle-theme"]',
+      trigger: 'click',
+      action: 'theme.toggle',
+      function: 'handleThemeToggle'
+    },
+    {
+      reference: 'language.change',
+      link: '[data-action="select-language"]',
+      trigger: 'change',
+      action: 'language.select',
+      function: 'handleLanguageChange'
+    },
+    {
+      reference: 'mode.change',
+      link: '[data-action="select-mode"]',
+      trigger: 'change',
+      action: 'mode.select',
+      function: 'handleModeChange'
     }
-  });
+  ];
 
-  themeButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
-    });
-  });
-
-  langSelectors.forEach((select) => {
-    select.addEventListener('change', (event) => {
-      applyLanguage(event.target.value);
-    });
-  });
-
-  modeSelectors.forEach((select) => {
-    select.addEventListener('change', (event) => {
-      applyMode(event.target.value);
-    });
-  });
+  wireConfigurations(configurations);
+  updateSendAvailability();
 }
 
 function init(){
