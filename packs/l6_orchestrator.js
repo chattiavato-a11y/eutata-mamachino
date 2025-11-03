@@ -226,7 +226,7 @@ async function deriveStrong({ query, lang }){
 // Try local extractive (L5). Returns {ok, text} or {ok:false}
 async function tryExtractive({ query, lang, ui, guardrails }){
   setStatus(ui, lang, 'status.thinkingLocal');
-  const text = await L5Local.draft({ query, lang, bm25Min:0.6, coverageNeeded:2 });
+  const text = await L5Local.draft({ query, lang, bm25Min:0.7, coverageNeeded:2 });
   if (!text) return { ok:false };
   // stream locally (simulated) and budget
   setStatus(ui, lang, 'status.streamingLocal');
