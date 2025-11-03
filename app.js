@@ -86,7 +86,7 @@ import { routeChat } from './packs/l6_orchestrator.js';
       send: 'Enviar',
       messageLabel: 'Mensaje del chat',
       messagePlaceholder: 'Escribe un mensaje…',
-      statusReady: 'Listo.',
+      statusReady: '',
       statusConnecting: 'Conectando…',
       statusStreaming: 'Transmitiendo…',
       statusStartError: 'Error al iniciar la transmisión.',
