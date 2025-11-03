@@ -123,16 +123,6 @@ const setText = (node, lang, key, params) => {
 const setStatus = (ui, lang, key, params) => setText(ui?.statusEl, lang, key, params);
 const setWarn = (ui, lang, key, params) => setText(ui?.warnEl, lang, key, params);
 
-function clearWarnings(ui){
-  const warnEl = ui?.warnEl;
-  if (!warnEl) return;
-  delete warnEl.dataset.localeKey;
-  delete warnEl.dataset.localeParams;
-  warnEl.textContent = '';
-  warnEl.hidden = true;
-  warnEl.removeAttribute?.('data-severity');
-}
-
 function createGuardrailState({ lang } = {}){
   return {
     lang: lang || 'en',
@@ -299,6 +289,7 @@ async function tryWebGPU({ query, lang, ui, modelId, guard, guardrails }){
   });
   Budget.note(tokensStreamed);
   setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
+  if (ui?.focusAssistant) ui.focusAssistant(aiEl);
   return out;
 }
 
@@ -309,7 +300,7 @@ async function tryServer({ state, ui, guard }){
   const res = await fetch('/api/chat', {
     method:'POST',
     headers:{ 'Content-Type':'application/json','X-CSRF':state.csrf, 'X-Session-Tokens-Spent': String(Budget.spent) },
-    body: JSON.stringify({ messages: state.messages.slice(-16), lang: state.lang, csrf: state.csrf, hp: state.hp||'' })
+    body: JSON.stringify({ messages: state.messages.slice(-16), lang: state.lang, csrf: state.csrf, hp: state.hp||'', mode: state.mode || 'hybrid' })
   });
   if (!res.ok || !res.body){ setStatus(ui, lang, 'status.serverError'); return ''; }
 
@@ -357,6 +348,7 @@ async function tryServer({ state, ui, guard }){
     }
   }
   setStatus(ui, lang, 'status.readyTokens', { tokens: Budget.spent });
+  if (ui?.focusAssistant) ui.focusAssistant(aiEl);
   return text;
 }
 
@@ -364,6 +356,7 @@ export async function routeChat({ ui, state, onGuardrailWarning, onGuardrailErro
   const guardrails = createGuardState();
   const guard = createGuardEmitter(ui, guardrails, { onGuardrailWarning, onGuardrailError });
   guard.clear?.();
+  const lang = state?.lang || 'es';
   const mode = state.mode || 'hybrid'; // 'local' | 'hybrid' | 'external'
   const lastUser = state.messages.filter(m=>m.role==='user').slice(-1)[0];
   const query = lastUser?.content || '';
