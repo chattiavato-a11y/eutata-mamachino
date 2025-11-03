@@ -499,10 +499,31 @@ function initVoiceControls(){
 function addMessage(role, text){
   const div = document.createElement('div');
   div.className = 'msg ' + (role === 'user' ? 'me' : 'ai');
+  div.dataset.role = role;
+  if (role === 'assistant'){
+    div.setAttribute('role', 'article');
+    div.tabIndex = -1;
+  }
   div.textContent = text;
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
   return div;
+}
+
+function focusAssistantMessage(node){
+  if (!node || node.dataset.role !== 'assistant'){
+    return;
+  }
+  if (!node.hasAttribute('tabindex')){
+    node.tabIndex = -1;
+  }
+  requestAnimationFrame(() => {
+    try {
+      node.focus({ preventScroll: false });
+    } catch {
+      node.focus();
+    }
+  });
 }
 
 function applyTheme(theme, { persist = true } = {}){
@@ -632,7 +653,8 @@ async function sendMessage(event){
       chatEl: chat,
       warnEl,
       statusEl,
-      addMsg: addMessage
+      addMsg: addMessage,
+      focusAssistant: focusAssistantMessage
     }
   });
 
