@@ -1,7 +1,7 @@
 :root{
   --bg:#0b0c10;
   --card:#121319;
-  --ink:#e6e6e6;
+  --ink:#ffffff;
   --muted:#a9b0b8;
   --accent:#6ad1ff;
   --ring:rgba(106,209,255,.35);
@@ -53,6 +53,28 @@ header h1{
   display:flex;
   gap:12px;
   align-items:center;
+  flex-wrap:wrap;
+}
+.toggle-field{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.toggle-set{
+  display:inline-flex;
+  gap:4px;
+}
+.toggle-button{
+  min-width:72px;
+  text-transform:none;
+}
+.toggle-button[aria-pressed="true"]{
+  background:rgba(106,209,255,.18);
+  border-color:var(--accent);
+  color:var(--ink);
+}
+.toggle-button[aria-pressed="true"]:hover{
+  box-shadow:0 0 0 3px var(--ring);
 }
 button,
 select{

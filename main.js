@@ -10,8 +10,8 @@ const statusEl = qs('#status');
 const warnEl = qs('#warn');
 const form = qs('#chatForm');
 const modeSelectors = qsa('[data-action="select-mode"]');
-const langSelectors = qsa('[data-action="select-language"]');
-const themeButtons = qsa('[data-action="toggle-theme"]');
+const langSelectors = qsa('[data-action="select-language"], [data-action="set-language"], [data-action="toggle-language"]');
+const themeButtons = qsa('[data-action="toggle-theme"], [data-action="set-theme"]');
 const micBtn = qs('#micBtn');
 const voiceStatus = qs('#voiceStatus');
 const micLabel = micBtn ? micBtn.querySelector('[data-role="mic-label"]') : null;
@@ -96,6 +96,11 @@ function handleInputChange(){
 
 function handleThemeToggle(event){
   event?.preventDefault?.();
+  const requestedTheme = event?.currentTarget?.dataset?.theme || event?.target?.dataset?.theme;
+  if (requestedTheme){
+    applyTheme(requestedTheme);
+    return;
+  }
   applyTheme(state.theme === 'dark' ? 'light' : 'dark');
 }
 
@@ -104,6 +109,24 @@ function handleLanguageChange(event){
   if (value){
     applyLanguage(value);
   }
+}
+
+function handleLanguageActivate(event){
+  event?.preventDefault?.();
+  const value = event?.currentTarget?.dataset?.lang || event?.target?.dataset?.lang;
+  if (value){
+    applyLanguage(value);
+  }
+}
+
+function handleLanguageToggle(event){
+  event?.preventDefault?.();
+  const nextLang = event?.currentTarget?.dataset?.nextLang;
+  if (nextLang){
+    applyLanguage(nextLang);
+    return;
+  }
+  applyLanguage(state.lang === 'es' ? 'en' : 'es');
 }
 
 function handleModeChange(event){
@@ -130,6 +153,8 @@ function wireConfigurations(configs){
     handleInputChange,
     handleThemeToggle,
     handleLanguageChange,
+    handleLanguageActivate,
+    handleLanguageToggle,
     handleModeChange
   };
   const registry = [];
@@ -483,12 +508,18 @@ function addMessage(role, text){
 function applyTheme(theme, { persist = true } = {}){
   const normalized = theme === 'light' ? 'light' : 'dark';
   document.documentElement.dataset.theme = normalized;
-  const labelKey = normalized === 'dark' ? 'controls.themeDark' : 'controls.themeLight';
-  const actionKey = normalized === 'dark' ? 'controls.themeToggleToLight' : 'controls.themeToggleToDark';
   themeButtons.forEach((btn) => {
-    btn.textContent = translate(labelKey);
+    if (!btn) return;
+    const nextTheme = normalized === 'dark' ? 'light' : 'dark';
+    const labelKey = nextTheme === 'dark' ? 'controls.themeDark' : 'controls.themeLight';
+    const actionKey = nextTheme === 'dark' ? 'controls.themeToggleToDark' : 'controls.themeToggleToLight';
+    const label = translate(labelKey);
+    const actionLabel = translate(actionKey);
+    btn.textContent = label;
+    btn.setAttribute('aria-label', actionLabel);
+    btn.setAttribute('title', actionLabel);
+    btn.dataset.theme = nextTheme;
     btn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
-    btn.setAttribute('aria-label', translate(labelKey));
   });
   if (persist){
     safeSet(themeKey, normalized);
@@ -504,7 +535,38 @@ function applyLanguage(lang, { persist = true } = {}){
     safeSet(langKey, normalized);
   }
   langSelectors.forEach((select) => {
-    if (select) select.value = normalized;
+    if (!select) return;
+    if (select.tagName === 'SELECT'){
+      select.value = normalized;
+      return;
+    }
+    if (select.matches('[data-action="toggle-language"]')){
+      const nextLang = normalized === 'es' ? 'en' : 'es';
+      const labelKey = nextLang === 'en' ? 'language.option.en' : 'language.option.es';
+      const actionKey = nextLang === 'en' ? 'language.toggleToEn' : 'language.toggleToEs';
+      const label = translate(labelKey);
+      const actionLabel = translate(actionKey);
+      if (label){
+        select.textContent = label;
+      }
+      if (actionLabel){
+        select.setAttribute('aria-label', actionLabel);
+        select.setAttribute('title', actionLabel);
+      }
+      select.dataset.nextLang = nextLang;
+      select.setAttribute('aria-pressed', normalized === 'en' ? 'true' : 'false');
+      return;
+    }
+    const buttonLang = select.dataset?.lang;
+    if (!buttonLang) return;
+    const normalizedButtonLang = ['es', 'en'].includes(buttonLang) ? buttonLang : null;
+    if (!normalizedButtonLang) return;
+    const isActive = normalizedButtonLang === normalized;
+    const labelKey = normalizedButtonLang === 'en' ? 'language.option.en' : 'language.option.es';
+    const label = translate(labelKey);
+    select.textContent = label;
+    select.setAttribute('aria-label', label);
+    select.setAttribute('aria-pressed', isActive ? 'true' : 'false');
   });
   if (window.I18N){
     window.I18N.apply(normalized);
@@ -720,7 +782,7 @@ function bindEvents(){
     },
     {
       reference: 'theme.toggle',
-      link: '[data-action="toggle-theme"]',
+      link: '[data-action="toggle-theme"], [data-action="set-theme"]',
       trigger: 'click',
       action: 'theme.toggle',
       function: 'handleThemeToggle'
@@ -731,6 +793,20 @@ function bindEvents(){
       trigger: 'change',
       action: 'language.select',
       function: 'handleLanguageChange'
+    },
+    {
+      reference: 'language.toggle',
+      link: '[data-action="toggle-language"]',
+      trigger: 'click',
+      action: 'language.toggle',
+      function: 'handleLanguageToggle'
+    },
+    {
+      reference: 'language.activate',
+      link: '[data-action="set-language"]',
+      trigger: 'click',
+      action: 'language.activate',
+      function: 'handleLanguageActivate'
     },
     {
       reference: 'mode.change',

@@ -11,14 +11,34 @@
       <div>
         <h1 data-i18n="header.title">Interfaz de chat OPS</h1>
       </div>
-      <div class="toggles" role="group" aria-label="Ajustes de visualización e idioma">
-        <label for="themeBtn" class="muted" data-i18n="controls.themeLabel">Tema</label>
-        <button id="themeBtn" type="button" aria-pressed="true" data-action="toggle-theme" data-i18n-attrs="aria-label:controls.themeDark">Oscuro</button>
-        <label for="langSel" class="muted" data-i18n="controls.languageLabel">Idioma</label>
-        <select id="langSel" aria-label="Selector de idioma" data-action="select-language">
-          <option value="en" data-i18n="language.option.en">Inglés</option>
-          <option value="es" selected data-i18n="language.option.es">Español</option>
-        </select>
+      <div class="toggles" aria-label="Ajustes de visualización e idioma">
+        <div class="toggle-field" role="group" aria-labelledby="themeLabel">
+          <span id="themeLabel" class="muted" data-i18n="controls.themeLabel">Tema</span>
+          <div class="toggle-set" role="presentation">
+            <button
+              type="button"
+              class="toggle-button"
+              data-action="toggle-theme"
+              data-theme="light"
+              aria-pressed="true"
+              aria-label="Cambiar a tema claro"
+            >Claro</button>
+          </div>
+        </div>
+        <div class="toggle-field" role="group" aria-labelledby="languageLabel">
+          <span id="languageLabel" class="muted" data-i18n="controls.languageLabel">Idioma</span>
+          <div class="toggle-set" role="presentation">
+            <button
+              type="button"
+              class="toggle-button"
+              data-action="toggle-language"
+              data-next-lang="en"
+              aria-pressed="false"
+              aria-label="Cambiar a inglés"
+              title="Cambiar a inglés"
+            >Inglés</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -37,7 +57,7 @@
               </button>
               <button id="send" type="submit" data-i18n="controls.send">Enviar</button>
             </div>
-            <div class="muted" id="status" role="status" aria-live="polite" data-i18n="status.idle">Listo.</div>
+            <div class="muted" id="status" role="status" aria-live="polite" data-i18n="status.idle"></div>
             <div class="muted" id="voiceStatus" role="status" aria-live="polite"></div>
             <div class="bad" id="warn" role="alert"></div>
             <div class="session-meters" id="usageMeters" aria-live="polite">
