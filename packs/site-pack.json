@@ -1,79 +1,49 @@
 {
-  "version": "1",
+  "version": "1.0",
   "docs": [
     {
-      "id": "service_pillars",
+      "title": "OPS Services v1",
       "lang": "en",
-      "title": "Service Pillars",
-      "url": "/services#pillars",
       "chunks": [
         {
-          "id": "service_pillars_business_ops",
-          "text": "Business Operations: Playbooks that maintain financial hygiene, stakeholder updates, executive-ready dashboards, billing accuracy, revenue protection, and vendor lifecycle visibility."
+          "id": "svc-pillars-bo",
+          "text": "Business Operations: Playbooks that maintain financial hygiene, stakeholder updates, and executive-ready dashboards. Focus areas: billing accuracy and revenue protection; procurement and vendor lifecycle visibility."
         },
         {
-          "id": "service_pillars_contact_center",
-          "text": "Contact Center (Beta): Relationship-first agents with omni-channel routing, sentiment cues, and knowledge refresh loops tuned to CX goals."
+          "id": "svc-pillars-cc",
+          "text": "Contact Center (Beta): Relationship-first agents augmented with insights to nurture loyalty and lifetime value. Focus areas: omni-channel routing with sentiment cues; knowledge refresh loops tuned to CX goals."
         },
         {
-          "id": "service_pillars_it_support",
-          "text": "IT Support (Beta): Incident-ready teams aligning IT and business continuity expectations with documented triage, resolution pathways, and cross-tool visibility."
+          "id": "svc-pillars-it",
+          "text": "IT Support (Beta): Incident-ready teams aligning IT and business continuity expectations. Focus areas: documented triage and resolution pathways; cross-tool visibility for faster collaboration."
         },
         {
-          "id": "service_pillars_professionals",
-          "text": "Professionals: Insight teams decoding performance data, delivering predictive analytics, sprint-ready insights, and feedback frameworks that prioritize user delight."
-        }
-      ]
-    },
-    {
-      "id": "service_solutions",
-      "lang": "en",
-      "title": "Service Solutions",
-      "url": "/services#solutions",
-      "chunks": [
-        {
-          "id": "service_solutions_business_ops",
-          "text": "Business Operations solution: Accurate billing, clean payables and receivables, vendor coordination, admin support, and marketing execution."
+          "id": "svc-pillars-pro",
+          "text": "Professionals: Insight teams decoding performance data to spotlight opportunities and ensure growth. Focus areas: predictive analytics and sprint-ready insights; feedback frameworks that prioritize user delight."
         },
         {
-          "id": "service_solutions_contact_center",
-          "text": "Contact Center (Beta) solution: Omni-channel, relationship-driven support focused on rapid resolution and loyalty."
+          "id": "sol-bo",
+          "text": "Solutions — Business Operations: Keep the engine running with accurate billing, clean payables/receivables, vendor coordination, admin support, marketing and digital marketing."
         },
         {
-          "id": "service_solutions_it_support",
-          "text": "IT Support (Beta) solution: End-to-end help desk coverage across tiers I and II, ticketing and incident handling from simple to complex fixes with specialized support."
+          "id": "sol-cc",
+          "text": "Solutions — Contact Center (Beta): Best-in-class across multi-channels; relationship-driven with rapid-resolution support."
         },
         {
-          "id": "service_solutions_professionals",
-          "text": "Professionals On Demand solution: Skilled assistants and specialists ready for temporary or long-term projects, including consultants."
-        }
-      ]
-    },
-    {
-      "id": "engagement_links",
-      "lang": "en",
-      "title": "Engagement Links",
-      "url": "/connect",
-      "chunks": [
-        {
-          "id": "engagement_join",
-          "text": "Join Us: apply via apply.html."
+          "id": "sol-it",
+          "text": "Solutions — IT Support (Beta): Seamless end-to-end IT support; practical Help Desk (Tiers I & II), ticketing and incident handling, simple to complex fixes, specialized support."
         },
         {
-          "id": "engagement_contact",
-          "text": "Contact Us: reach out through contact.html#contact-form."
-        }
-      ]
-    },
-    {
-      "id": "ops_values",
-      "lang": "es",
-      "title": "Valores y Señales OPS",
-      "url": "/ops#valores",
-      "chunks": [
+          "id": "sol-pro",
+          "text": "Solutions — Professionals On Demand: Skilled assistants and specialists you can plug in quickly for temporary to long-term projects, including consultants."
+        },
         {
-          "id": "ops_values_1",
-          "text": "Cobertura confiable, comunicación clara, alcances definidos, y participación flexible."
+          "id": "link-join",
+          "text": "Engagement Link — Join Us: ../apply.html"
+        },
+        {
+          "id": "link-contact",
+          "text": "Engagement Link — Contact Us: ../contact.html#contact-form"
         }
       ]
     }
