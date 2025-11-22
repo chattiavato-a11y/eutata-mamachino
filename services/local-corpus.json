@@ -1,0 +1,110 @@
+[
+  {
+    "id": "greeting",
+    "title": "Greetings and introductions",
+    "prompt": "hello hi hey greetings hola buenas buen dia good morning good afternoon welcome",
+    "answers": {
+      "en": "Hi! I’m Chattia, the OPS virtual assistant. Tell me in a few words what you need—services, hiring help, or just exploring—and I’ll guide you from there.",
+      "es": "¡Hola! Soy Chattia, asistente virtual de OPS. Cuéntame en pocas palabras qué necesitas—servicios, contratación o solo explorar—y te guío desde ahí."
+    }
+  },
+  {
+    "id": "status",
+    "title": "Service availability",
+    "prompt": "service status availability outage offline mantenimiento estado",
+    "answers": {
+      "en": "Some parts of our platform may be in maintenance, so I’m working in a lighter mode. You can still tell me what you need; I’ll answer with what I have now and make sure your request is noted for follow-up if required.",
+      "es": "Es posible que algunas partes de la plataforma estén en mantenimiento, así que estoy trabajando en una versión más ligera. Igual puedes contarme qué necesitas; responderé con lo que tengo ahora y dejaré tu solicitud registrada para seguimiento si hace falta."
+    }
+  },
+  {
+    "id": "integrity",
+    "title": "Experience and safety checks",
+    "prompt": "integrity gateway summary ttl signature protocolos health resumen",
+    "answers": {
+      "en": "We regularly check that you are using the official OPS experience and that your session stays safe. If anything looks unstable, I’ll simply let you know we’re in a more cautious mode while everything settles.",
+      "es": "Revisamos de forma periódica que estés usando la experiencia oficial de OPS y que tu sesión se mantenga segura. Si algo se ve inestable, te avisaré de que estamos en un modo más cuidadoso mientras todo vuelve a la normalidad."
+    }
+  },
+  {
+    "id": "security",
+    "title": "Security and compliance",
+    "prompt": "security seguridad compliance cumplimiento pci nist cisa ops cybersec core governance gobernanza",
+    "answers": {
+      "en": "We treat your information with the same care that organisations use for banking-level security: limited access, strong protection, and clear rules on how data is handled. Even when we are in a reduced mode, we keep that standard.",
+      "es": "Tratamos tu información con el mismo cuidado que se usa en entornos de seguridad bancaria: acceso limitado, protección fuerte y reglas claras sobre cómo se maneja. Incluso en modo reducido mantenemos ese estándar."
+    }
+  },
+  {
+    "id": "ux",
+    "title": "UX and accessibility",
+    "prompt": "ux ui accessibility accesibilidad wcag progressive web app core web vitals experiencia",
+    "answers": {
+      "en": "OPS is designed to feel clear, accessible, and comfortable to use for as many people as possible, including those who rely on assistive tools. If something feels confusing or slow, tell me—I can note it so the team can improve the experience.",
+      "es": "OPS está diseñado para ser claro, accesible y cómodo de usar para la mayor cantidad de personas posible, incluyendo a quienes usan herramientas de apoyo. Si algo se siente confuso o lento, cuéntamelo y lo registraré para que el equipo mejore la experiencia."
+    }
+  },
+  {
+    "id": "payments",
+    "title": "Payments and data protection",
+    "prompt": "payments pagos pci tokens card datos sensibles encryption cifrado",
+    "answers": {
+      "en": "When you pay, sensitive card details are handled by our trusted payment partners in their own secure systems. We only receive safe confirmation tokens and basic status, not full card numbers.",
+      "es": "Cuando realizas un pago, los datos sensibles de la tarjeta los gestionan nuestros aliados de pago en sus propios sistemas seguros. Nosotros solo recibimos confirmaciones seguras y estado básico, nunca el número completo de la tarjeta."
+    }
+  },
+  {
+    "id": "privacy",
+    "title": "Privacy and governance",
+    "prompt": "privacy privacidad gdpr ccpa datos personales data retention retencion",
+    "answers": {
+      "en": "We follow modern privacy rules and keep your information only for as long as it is needed to help you. Short notes stored while we process your request are cleaned up instead of being kept indefinitely.",
+      "es": "Seguimos normas modernas de privacidad y conservamos tu información solo el tiempo necesario para ayudarte. Las notas temporales que usamos mientras atendemos tu solicitud se eliminan en lugar de guardarse indefinidamente."
+    }
+  },
+  {
+    "id": "observability",
+    "title": "Monitoring and reliability",
+    "prompt": "observability telemetry metrics lighthouse core web vitals logging monitoreo",
+    "answers": {
+      "en": "We keep an eye on speed, reliability, and error patterns so your experience is as smooth as possible. If you notice delays, glitches, or anything that feels off, describe it to me and I’ll save it for our reliability team.",
+      "es": "Cuidamos la rapidez, la estabilidad y los posibles errores para que tu experiencia sea lo más fluida posible. Si notas demoras, fallos o algo extraño, descríbelo y lo registraré para que el equipo de fiabilidad lo revise."
+    }
+  },
+  {
+    "id": "roadmap",
+    "title": "Roadmap and experimentation",
+    "prompt": "roadmap plan futuro features experimentos tiny llm tiny ml",
+    "answers": {
+      "en": "We are constantly improving OPS: more tailored answers, smoother experiences on slower connections, and easier ways to work with our remote professionals. Share what you would love to see next and I’ll flag it as input for the product team.",
+      "es": "Estamos mejorando OPS de forma continua: respuestas más personalizadas, una experiencia más suave incluso con conexiones lentas y formas más sencillas de trabajar con nuestro talento remoto. Cuéntame qué te gustaría ver y lo marcaré como aporte para el equipo de producto."
+    }
+  },
+  {
+    "id": "escalate",
+    "title": "Escalation request",
+    "prompt": "escalate escalation soporte support human agente contactar help ayuda",
+    "answers": {
+      "en": "I have noted that you would like support from a person. Tell me what is happening and what outcome you are looking for, and I’ll package that context so the human team can pick it up as soon as they are available.",
+      "es": "He registrado que quieres apoyo de una persona. Cuéntame qué está pasando y qué resultado buscas, y prepararé ese contexto para que el equipo humano lo tome en cuanto esté disponible."
+    }
+  },
+  {
+    "id": "goodbye",
+    "title": "Closing the session",
+    "prompt": "goodbye thanks thank you bye adios gracias",
+    "answers": {
+      "en": "Thank you for spending time with us today. If more questions come up later, just come back and we’ll continue from where we left off.",
+      "es": "Gracias por pasar por aquí hoy. Si luego te surgen más preguntas, solo vuelve y seguimos desde donde nos quedamos."
+    }
+  },
+  {
+    "id": "default",
+    "title": "General fallback",
+    "prompt": "general fallback default cualquier cosa",
+    "answers": {
+      "en": "I may not have the perfect tool for this question right now, but your message is saved so we can learn from it and, if needed, follow up through our usual channels. In the meantime, you can rephrase or ask from another angle.",
+      "es": "Puede que ahora no tenga la herramienta perfecta para esta pregunta, pero tu mensaje queda guardado para aprender de él y, si hace falta, darle seguimiento por los canales habituales. Mientras tanto, puedes reformular o preguntar desde otro enfoque."
+    }
+  }
+]

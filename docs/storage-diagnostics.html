@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Storage Diagnostics Console</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0c0b16;
+      --panel: #15142b;
+      --text: #f6f4ff;
+      --muted: #b9b2d9;
+      --accent: #7cf2c9;
+      --warn: #ffd166;
+      --bad: #ff6b6b;
+      --border: rgba(255, 255, 255, 0.16);
+      --shadow: 0 18px 35px rgba(0,0,0,0.35);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 15% 20%, rgba(124,242,201,0.08), transparent 35%),
+                  radial-gradient(circle at 80% 10%, rgba(255,107,107,0.08), transparent 35%),
+                  var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .shell {
+      width: min(1100px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 1.25rem 1.5rem;
+      display: grid;
+      gap: 1rem;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      justify-content: space-between;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      letter-spacing: 0.02em;
+    }
+
+    p { margin: 0; color: var(--muted); }
+
+    .lead { max-width: 780px; }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    label {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    input[type="url"],
+    select {
+      width: min(520px, 100%);
+      padding: 0.55rem 0.65rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    button {
+      background: linear-gradient(135deg, #7cf2c9, #6dd3ff);
+      border: none;
+      color: #05030e;
+      padding: 0.65rem 1rem;
+      border-radius: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      box-shadow: 0 10px 18px rgba(109, 211, 255, 0.3);
+    }
+
+    .ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: 10px;
+      border: 1px dashed var(--border);
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+      background: rgba(124, 242, 201, 0.06);
+    }
+
+    .ghost:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    button:focus-visible {
+      outline: 3px solid #ffec99;
+      outline-offset: 3px;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    .result,
+    .payload {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      text-transform: uppercase;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      background: rgba(255,255,255,0.05);
+    }
+
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+    .ok { color: var(--accent); }
+    .ok .dot { background: var(--accent); box-shadow: 0 0 12px rgba(124,242,201,0.8); }
+    .warn { color: var(--warn); }
+    .warn .dot { background: var(--warn); box-shadow: 0 0 12px rgba(255,209,102,0.8); }
+    .bad { color: var(--bad); }
+    .bad .dot { background: var(--bad); box-shadow: 0 0 12px rgba(255,107,107,0.8); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem;
+      background: rgba(255,255,255,0.03);
+    }
+
+    .card h3 { margin: 0 0 0.35rem 0; }
+    .card .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 0.35rem; }
+    .card .error { color: var(--bad); font-weight: 600; }
+    .card .success { color: var(--accent); font-weight: 700; }
+
+    .diag-list {
+      display: grid;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .diag-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.6rem 0.75rem;
+      background: rgba(255,255,255,0.02);
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .diag-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    code {
+      padding: 0.15rem 0.35rem;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.07);
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--muted);
+    }
+
+    .muted { color: var(--muted); }
+    .small { font-size: 0.9rem; }
+
+    @media (max-width: 640px) {
+      body { padding: 0.75rem; }
+      header { flex-direction: column; align-items: flex-start; }
+      input[type="url"] { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell" aria-live="polite">
+    <header>
+      <div>
+        <h1>Storage Diagnostics Console</h1>
+        <p class="lead">Run the worker's <code>/debug/storage</code> self-test, visualize binding health, and pinpoint failing links by fault code.</p>
+      </div>
+      <button id="runBtn" type="button" aria-label="Run storage diagnostics">Run checks</button>
+    </header>
+
+    <div class="controls" role="group" aria-label="Diagnostics target">
+      <label for="endpoint">Worker base URL</label>
+      <input id="endpoint" type="url" inputmode="url" spellcheck="false" placeholder="https://your-worker.workers.dev" aria-describedby="endpointHint">
+      <p id="endpointHint" class="muted small">The tool will call <code>[base]/debug/storage</code>. Defaults to the current origin if left blank.</p>
+      <a id="rawLink" class="ghost" href="#" rel="noreferrer noopener" target="_blank">Open raw diagnostics</a>
+    </div>
+
+    <section class="result" aria-live="polite" aria-atomic="true">
+      <div id="summaryRow" class="controls" style="justify-content: space-between; align-items: center;">
+        <div id="summaryChip" class="status-chip warn"><span class="dot"></span><span class="label">Awaiting run</span></div>
+        <div id="ts" class="muted small">Last run: never</div>
+      </div>
+      <div class="grid" id="cards"></div>
+      <div class="payload">
+        <strong>Diagnostics</strong>
+        <div id="diagList" class="diag-list"></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const runBtn = document.getElementById('runBtn');
+    const endpointInput = document.getElementById('endpoint');
+    const rawLink = document.getElementById('rawLink');
+    const summaryChip = document.getElementById('summaryChip');
+    const summaryLabel = summaryChip.querySelector('.label');
+    const tsEl = document.getElementById('ts');
+    const cardsEl = document.getElementById('cards');
+    const diagList = document.getElementById('diagList');
+
+    runBtn.addEventListener('click', runChecks);
+    endpointInput.addEventListener('input', updateRawLink);
+    updateRawLink();
+
+    function buildUrl() {
+      const base = endpointInput.value.trim() || `${location.origin}`;
+      return `${base.replace(/\/$/, '')}/debug/storage`;
+    }
+
+    function updateRawLink() {
+      rawLink.href = buildUrl();
+    }
+
+    function setChip(status, label) {
+      summaryChip.classList.remove('ok', 'warn', 'bad');
+      summaryChip.classList.add(status);
+      summaryLabel.textContent = label;
+    }
+
+    function cardTemplate(area, data) {
+      const statusClass = data.ok ? 'ok' : 'bad';
+      const heading = `${area} • ${data.code || 'N/A'}`;
+      const statusText = data.ok ? 'Healthy' : 'Issue detected';
+      const binding = data.binding ? `<div class="meta">Binding: <code>${data.binding}</code></div>` : '';
+      const extra = data.error
+        ? `<div class="error">${data.error}</div>`
+        : `<div class="success">Read/write check passed</div>`;
+      const row = data.row ? `<pre class="muted">Row: ${JSON.stringify(data.row)}</pre>` : '';
+
+      return `<article class="card ${statusClass}" aria-label="${heading}">
+        <h3>${heading}</h3>
+        <div class="meta">${statusText}</div>
+        ${binding}
+        ${extra}
+        ${row}
+      </article>`;
+    }
+
+    function diagTemplate(diag) {
+      return `<div class="diag-item">
+        <div class="diag-header"><strong>${diag.code}</strong><span class="muted small">${diag.area}</span></div>
+        <pre>${diag.message}</pre>
+      </div>`;
+    }
+
+    async function runChecks() {
+      updateRawLink();
+      runBtn.disabled = true;
+      setChip('warn', 'Running…');
+      cardsEl.innerHTML = '';
+      diagList.innerHTML = '';
+
+      try {
+        const resp = await fetch(buildUrl(), { method: 'GET', headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        render(data);
+      } catch (err) {
+        setChip('bad', 'Network / CORS error');
+        tsEl.textContent = `Last run: failed (${new Date().toLocaleTimeString()})`;
+        cardsEl.innerHTML = `<p class="muted">${err.message || err}</p>`;
+        diagList.innerHTML = `<div class="diag-item"><div class="diag-header"><strong>NET-01</strong><span class="muted small">Network</span></div><pre>${err.message || err}</pre></div>`;
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    function render(data) {
+      const statusMap = { 'S-OK': ['ok', 'All bindings healthy'], 'S-PARTIAL': ['warn', 'Partial'], 'S-FAIL': ['bad', 'Offline'] };
+      const [cls, label] = statusMap[data.summaryCode] || ['warn', data.summaryCode || 'Unknown'];
+      setChip(cls, `${label} (${data.summaryCode || 'N/A'})`);
+      tsEl.textContent = `Last run: ${new Date().toLocaleTimeString()}`;
+
+      const segments = [ ['KV', data.kv], ['R2', data.r2], ['D1', data.d1] ];
+      cardsEl.innerHTML = segments.map(([area, payload]) => cardTemplate(area, payload || {})).join('');
+
+      if (Array.isArray(data.diagnostics) && data.diagnostics.length) {
+        diagList.innerHTML = data.diagnostics.map(diagTemplate).join('');
+      } else {
+        diagList.innerHTML = '<p class="muted">No diagnostics returned.</p>';
+      }
+    }
+
+    // Auto-run on load using current origin
+    runChecks();
+  </script>
+</body>
+</html>
