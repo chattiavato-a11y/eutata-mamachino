@@ -1,170 +1,743 @@
-<!doctype html>
-<html lang="es" data-theme="dark">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat · Local-first con respaldo WebGPU</title>
-<link rel="stylesheet" href="styles.css" />
+<!-- index.html — GitHub Pages UI (signed chat; default live fallback; Cloudflare sanity check) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>Chattia</title>
+<meta name="integrity-token" content="https://chattiavato-a11y.github.io">
+<link rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+  integrity="sha512-RXf+QSDCUqpphKAa+WAc3XQ8fE5H1aO/8e2wY+8Q1n8yVwDh1RZTf1TDN8E+u1n7eU5KyY7X2Qo+hqeZZn+UAQ=="
+  crossorigin="anonymous" referrerpolicy="no-referrer" />
+<style>
+:root{
+  --clr-primary:#00c4ff; --clr-accent:#ff3bdb;
+  --body-bg:#050111; --body-text:#f4f3ff;
+  --surface:#251541; --surface-soft:#220f3a; --surface-alt:#1b0e2d;
+  --bot-bg:#321b53; --bot-text:#fff; --user-text:#050118;
+  --control-bg:rgba(255,255,255,0.08);
+  --outline-strong:#ffd400;
+}
+body[data-theme="light"]{
+  --body-bg:#fdfbff; --body-text:#1b1030;
+  --surface:#faf6ff; --surface-alt:#f5edff; --surface-soft:#ece0ff;
+  --bot-bg:#efe7ff; --bot-text:#2d1650; --control-bg:rgba(10,4,32,0.08);
+  --outline-strong:#2d1650;
+}
+body[data-theme="high-contrast"]{
+  --clr-primary:#ffd400; --clr-accent:#ff007a;
+  --body-bg:#0b0b0b; --body-text:#ffffff;
+  --surface:#000; --surface-soft:#0f0f0f; --surface-alt:#0b0b0b;
+  --bot-bg:#1a1a1a; --bot-text:#fdfdfd; --user-text:#0b0b0b;
+  --control-bg:rgba(255,255,255,0.18);
+  --outline-strong:#00e0ff;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; font-family:system-ui,Segoe UI,Arial,sans-serif;
+  background:var(--body-bg); color:var(--body-text);
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  transition:background-color .35s ease, color .3s ease;
+}
+.with-transition *{ transition:background-color .35s ease, color .3s ease, border-color .3s ease; }
+#chatbot-container{
+  position:fixed; right:16px; bottom:16px;
+  width:min(400px,calc(100vw - 32px)); height:min(680px,calc(100vh - 32px));
+  background:var(--surface); border:2px solid var(--clr-accent); border-radius:18px; overflow:hidden;
+  display:flex; flex-direction:column; box-shadow:0 20px 50px rgba(5,1,17,.45); z-index:10
+}
+@supports (height:100dvh){ #chatbot-container{height:min(680px,calc(100dvh - 32px))} }
+#chatbot-header{ display:flex; align-items:center; gap:.5rem; justify-content:flex-start;
+  padding:.7rem .9rem; background:linear-gradient(135deg,var(--clr-primary),var(--clr-accent)); color:#fff }
+#chatbot-header h1{ margin:0; font-size:1.05rem }
+.control-dock{ display:flex; flex-wrap:wrap; gap:.45rem; margin-bottom:.6rem }
+.dock-btn{
+  background:var(--control-bg);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:999px;
+  color:var(--body-text);
+  padding:.35rem .85rem;
+  font-weight:600;
+  font-size:.85rem;
+  cursor:pointer;
+  text-transform:uppercase;
+}
+.dock-btn:focus-visible{ outline:3px solid var(--outline-strong); outline-offset:2px }
+.dock-btn[disabled]{ opacity:.65; cursor:not-allowed }
+#status-banner{ background:var(--surface-soft); color:#fff; padding:.45rem .9rem; font-size:.85rem }
+#status-banner .status-content{ display:flex; align-items:center; justify-content:space-between; gap:.75rem }
+#status-banner .status-content span{ flex:1 }
+.sync-indicator{ display:flex; align-items:center; gap:.35rem; font-size:.75rem; font-weight:700; letter-spacing:.08em }
+.sync-dot{ width:10px; height:10px; border-radius:50%; box-shadow:0 0 8px rgba(255,255,255,.4); background:#ff3bdb }
+#syncIndicator[data-state="linked"] .sync-dot{ background:#20ffb4; box-shadow:0 0 8px rgba(32,255,180,.9) }
+#syncIndicator[data-state="linked"] .sync-label{ color:#20ffb4 }
+#syncIndicator[data-state="unlinked"] .sync-dot{ background:#ff4d7a; box-shadow:0 0 8px rgba(255,77,122,.8) }
+#syncIndicator[data-state="unlinked"] .sync-label{ color:#ff9ab7 }
+#status-banner.status-online{ background:rgba(0,200,110,.25) }
+#status-banner.status-offline{ background:rgba(230,0,0,.25) }
+#status-banner.status-fallback{ background:rgba(255,180,0,.25) }
+.status-inspector-toggle{ background:transparent; color:inherit; border:1px solid rgba(255,255,255,.2); border-radius:999px; padding:.3rem .7rem; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:.35rem }
+.status-inspector-toggle:focus-visible{ outline:3px solid var(--outline-strong); outline-offset:2px }
+.status-inspector{ background:var(--surface-soft); color:var(--body-text); border-top:1px solid rgba(255,255,255,.1); padding:.6rem .9rem; display:grid; gap:.5rem; font-size:.83rem }
+.status-inspector .meta-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.45rem .75rem }
+.status-inspector .meta-line{ display:flex; gap:.45rem; align-items:center }
+.status-inspector .meta-label{ font-weight:700; text-transform:uppercase; letter-spacing:.03em; font-size:.75rem; opacity:.8 }
+.status-inspector .meta-value{ word-break:break-all }
+.status-inspector .meta-pill{ display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .55rem; background:var(--control-bg); border-radius:999px; border:1px solid rgba(255,255,255,.16) }
+.status-inspector .pill-dot{ width:9px; height:9px; border-radius:50%; background:#20ffb4; box-shadow:0 0 8px rgba(32,255,180,.8) }
+.status-inspector .pill-dot.warn{ background:#ffb347; box-shadow:0 0 8px rgba(255,179,71,.8) }
+.status-inspector .pill-dot.bad{ background:#ff4d7a; box-shadow:0 0 8px rgba(255,77,122,.8) }
+.status-inspector .note{ margin:0; color:rgba(255,255,255,.8) }
+#chat-log{ flex:1; overflow:auto; padding:1rem; background:var(--surface-alt); color:var(--bot-text); font-size:.95rem }
+.chat-msg{ margin:.5rem 0; max-width:90%; line-height:1.35; word-wrap:break-word }
+.user{ margin-left:auto; background:var(--clr-primary); color:var(--user-text); padding:.5rem .7rem; border-radius:16px 16px 0 16px }
+.bot{ margin-right:auto; background:var(--bot-bg); color:var(--bot-text); padding:.5rem .7rem; border-radius:16px 16px 16px 0 }
+#chatbot-form-container{ background:var(--surface-soft); border-top:1px solid rgba(255,255,255,.12); padding:.65rem .9rem calc(.65rem + env(safe-area-inset-bottom)) }
+#chatbot-form-container .inline-popover{ background:var(--surface); border:2px solid var(--clr-primary); border-radius:14px; padding:.85rem; margin-bottom:.65rem; box-shadow:0 12px 30px rgba(5,1,17,.35) }
+.inline-popover h3{ margin-top:0 }
+.inline-popover .popover-footer{ display:flex; justify-content:flex-end }
+#chatbot-input-row{ display:flex; gap:.6rem; align-items:stretch }
+#chatbot-input{ flex:1; background:var(--control-bg); border:none; border-radius:12px; color:var(--bot-text); font-size:.95rem; padding:.6rem .75rem }
+#chatbot-send{ display:flex; align-items:center; justify-content:center; gap:6px; background:var(--clr-accent); border:none; color:#fff; font-weight:600; padding:.55rem .95rem; border-radius:12px; cursor:pointer; box-shadow:0 6px 16px rgba(255,59,219,.35) }
+.fab:focus-visible,.ctrl-btn:focus-visible,#chatbot-input:focus-visible,#chatbot-send:focus-visible{ outline:3px solid var(--outline-strong); outline-offset:3px }
+  .inline-popover .modal{ border:none; box-shadow:none }
+  .modal-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:.65rem }
+  .modal-body{ display:grid; gap:.5rem }
+  .modal-close{ background:transparent; border:none; color:inherit; cursor:pointer; font-size:.95rem; display:flex; align-items:center; gap:.35rem }
+  .modal h3{ margin:0; font-size:1rem }
+  .support-list{ list-style:none; padding:0; margin:.5rem 0; display:grid; gap:.5rem }
+  .support-list button{ width:100%; text-align:left; border:1px solid rgba(255,255,255,.12); padding:.75rem .85rem; border-radius:10px; background:var(--control-bg); color:var(--body-text); cursor:pointer }
+  .visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  .turnstile-slot{height:0;overflow:hidden}
+  .hidden{ display:none !important }
+@media (max-width:560px){
+  #chatbot-container{ inset:0; width:100vw; height:100vh; border-radius:0 }
+  @supports(height:100dvh){ #chatbot-container{height:100dvh} }
+  .fab{ right:12px }
+}
 
+@media (max-width:720px){
+  #chatbot-header{ flex-wrap:wrap; align-items:flex-start }
+  .header-actions{ width:100%; justify-content:flex-end; flex-wrap:wrap; gap:.4rem }
+  .ctrl-btn{ padding:.35rem .65rem; font-size:.9rem }
+  .sticky-footer{ display:none }
+}
+</style>
+</head>
 <body>
-  <div class="wrap">
-    <header>
-      <div>
-        <h1 data-i18n="header.title">Interfaz de chat OPS</h1>
-      </div>
-      <div class="toggles" aria-label="Ajustes de visualización e idioma">
-        <div class="toggle-field" role="group" aria-labelledby="themeLabel">
-          <span id="themeLabel" class="muted" data-i18n="controls.themeLabel">Tema</span>
-          <div class="toggle-set" role="presentation">
-            <button
-              type="button"
-              class="toggle-button"
-              data-action="toggle-theme"
-              data-theme="light"
-              aria-pressed="true"
-              aria-label="Cambiar a tema claro"
-            >Claro</button>
-          </div>
-        </div>
-        <div class="toggle-field" role="group" aria-labelledby="languageLabel">
-          <span id="languageLabel" class="muted" data-i18n="controls.languageLabel">Idioma</span>
-          <div class="toggle-set" role="presentation">
-            <button
-              type="button"
-              class="toggle-button"
-              data-action="toggle-language"
-              data-next-lang="en"
-              aria-pressed="false"
-              aria-label="Cambiar a inglés"
-              title="Cambiar a inglés"
-            >Inglés</button>
-          </div>
-        </div>
-      </div>
-    </header>
 
-    <main>
-      <section aria-labelledby="chat-title">
-        <div class="policy-card">
-          <h2 id="chat-title" data-i18n="chat.title">Consola de sesión</h2>
-          <form id="chatForm" novalidate>
-            <div id="chat" class="chat" role="log" aria-live="polite"></div>
-            <div class="bar">
-              <label class="visually-hidden" for="input" data-i18n="controls.inputLabel">Mensaje de chat</label>
-              <textarea id="input" placeholder="Escribe un mensaje…" aria-label="Entrada de mensaje" data-i18n-attrs="placeholder:controls.placeholder,aria-label:controls.inputLabel"></textarea>
-              <button id="micBtn" type="button" class="mic-btn" aria-pressed="false" aria-label="Iniciar entrada de voz" title="Iniciar entrada de voz" disabled>
-                <span aria-hidden="true">🎤</span>
-                <span class="visually-hidden" data-role="mic-label">Iniciar entrada de voz</span>
-              </button>
-              <button id="send" type="submit" data-i18n="controls.send">Enviar</button>
-            </div>
-            <div class="muted" id="status" role="status" aria-live="polite" data-i18n="status.idle"></div>
-            <div class="muted" id="voiceStatus" role="status" aria-live="polite"></div>
-            <div class="bad" id="warn" role="alert"></div>
-            <div class="session-meters" id="usageMeters" aria-live="polite">
-              <div class="session-meter" id="tokenMeter" role="status">
-                <span class="muted" data-i18n="controls.tokensLabel">Uso de tokens</span>
-                <progress id="tokenProgress" value="0" max="1" aria-label="Uso de tokens"></progress>
-                <span class="session-meter-value" id="tokenValue">0</span>
-              </div>
-              <div class="session-meter hidden" id="minuteMeter" role="status">
-                <span class="muted">Minutos</span>
-                <progress id="minuteProgress" value="0" max="1" aria-label="Uso de minutos"></progress>
-                <span class="session-meter-value" id="minuteValue">0</span>
-              </div>
-            </div>
-          </form>
-        </div>
-      </section>
-
-    </main>
-
-    <footer>
-      <nav class="footer-links" aria-label="Políticas de cumplimiento y avisos legales">
-        <button
-          type="button"
-          class="footer-link"
-          data-dialog-target="cookieDialog"
-          aria-haspopup="dialog"
-          aria-expanded="false"
-          data-i18n="footer.cookieLink"
-        >Consentimiento de cookies</button>
-        <button
-          type="button"
-          class="footer-link"
-          data-dialog-target="termsDialog"
-          aria-haspopup="dialog"
-          aria-expanded="false"
-          data-i18n="footer.termsLink"
-        >Términos y condiciones</button>
-        <button
-          type="button"
-          class="footer-link"
-          data-dialog-target="rightsDialog"
-          aria-haspopup="dialog"
-          aria-expanded="false"
-          data-i18n="footer.rightsLink"
-        >Marcas registradas y derechos de autor</button>
-      </nav>
-      <p class="footer-copy" id="footerCopy"></p>
-    </footer>
+<div id="chatbot-container" role="dialog" aria-modal="true">
+<div id="chatbot-header">
+  <h1 id="titleEl">Chattia</h1>
+</div>
+<div id="status-banner" class="status-online">
+  <div class="status-content">
+    <span id="statusText">Secure link active</span>
+    <div id="syncIndicator" class="sync-indicator" data-state="unlinked" role="status" aria-live="polite" aria-label="Worker sync unavailable">
+      <span class="sync-dot" aria-hidden="true"></span>
+      <span id="syncLabel" class="sync-label">[SYNC]</span>
+    </div>
+    <button id="statusInspectorToggle" class="status-inspector-toggle" type="button" aria-expanded="false" aria-controls="statusInspector">
+      <i class="fa fa-circle-info" aria-hidden="true"></i>
+      Status details
+    </button>
   </div>
-
-  <dialog id="cookieDialog" class="policy-dialog" aria-labelledby="cookieDialogTitle">
-    <form method="dialog" class="policy-dialog__content">
-      <header>
-        <h2 id="cookieDialogTitle" data-i18n="dialogs.cookie.title">Consentimiento de cookies</h2>
-        <button
-          type="submit"
-          class="dialog-close"
-          value="close"
-          aria-label="Cerrar"
-          data-dialog-close
-          data-i18n-attrs="aria-label:dialogs.close"
-        >×</button>
-      </header>
-      <p data-i18n="dialogs.cookie.body1">Solo implementamos cookies esenciales necesarias para asegurar la sesión, detectar abusos y recordar tus preferencias de accesibilidad. Las analíticas son agregadas, anónimas y nunca incluyen identificadores personales.</p>
-      <p data-i18n="dialogs.cookie.body2">Tu contenido de chat permanece local por defecto a menos que una política lo escale a infraestructura protegida. Rechazar las cookies opcionales mantiene la experiencia funcional sin personalización.</p>
+</div>
+  <div id="chat-log" aria-live="polite"></div>
+<div id="chatbot-form-container">
+  <div id="resetPopover" class="inline-popover hidden" role="dialog" aria-modal="false" aria-labelledby="supportTitle">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="supportTitle">Reset or feedback</h3>
+        <button id="supportClose" class="modal-close" type="button" aria-label="Close reset options"><i class="fa fa-times"></i> Close</button>
+      </div>
+      <div class="modal-body">
+        <p>Keep the modal open while you decide—no accidental closes on outside clicks.</p>
+        <ul class="support-list">
+          <li><button type="button" id="resetThread"><i class="fa fa-rotate"></i> Reset conversation & memory</button></li>
+          <li><button type="button" id="submitFeedback"><i class="fa fa-comment-dots"></i> Leave quick feedback</button></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="control-dock" role="group" aria-label="Conversation controls">
+    <button id="resetCtrl" class="dock-btn" type="button" aria-haspopup="dialog" aria-expanded="false">Reset</button>
+    <button id="voiceCtrl" class="dock-btn" type="button" aria-pressed="false" aria-label="Toggle voice input">Voice</button>
+    <button id="langCtrl" class="dock-btn" type="button" aria-pressed="false" aria-label="Switch language">ES</button>
+    <button id="themeCtrl" class="dock-btn" type="button" aria-pressed="false" aria-label="Toggle theme">Dark</button>
+  </div>
+  <form id="chatbot-input-row" autocomplete="off">
+    <div id="turnstile-slot" class="turnstile-slot" aria-hidden="true"></div>
+      <input id="turnstile-token" type="hidden" name="cf-turnstile-response" value="" data-require="false">
+      <label class="visually-hidden" for="chatbot-company">Company</label>
+      <input id="chatbot-company" type="text" name="company" autocomplete="off" aria-hidden="true" tabindex="-1" style="position:absolute;left:-9999px">
+      <input id="chatbot-input" type="text" placeholder="Type your message… [Enter]" maxlength="256">
+      <button id="chatbot-send" type="submit" aria-label="Send"><i class="fa fa-arrow-right"></i></button>
     </form>
-  </dialog>
+  </div>
+</div>
 
-  <dialog id="termsDialog" class="policy-dialog" aria-labelledby="termsDialogTitle">
-    <form method="dialog" class="policy-dialog__content">
-      <header>
-        <h2 id="termsDialogTitle" data-i18n="dialogs.terms.title">Términos y condiciones</h2>
-        <button
-          type="submit"
-          class="dialog-close"
-          value="close"
-          aria-label="Cerrar"
-          data-dialog-close
-          data-i18n-attrs="aria-label:dialogs.close"
-        >×</button>
-      </header>
-      <p data-i18n="dialogs.terms.body1">Al utilizar este asistente aceptas seguir las reglas de uso permitido, abstenerte de enviar datos maliciosos o regulados y respetar todas las marcas de confidencialidad que produzca el sistema.</p>
-      <p data-i18n="dialogs.terms.body2">El servicio se ofrece “tal cual”, sin garantías. Los objetivos de disponibilidad siguen las prácticas operativas de PCI DSS y las disputas se rigen por las leyes aplicables de tu jurisdicción.</p>
-    </form>
-  </dialog>
+<button id="themeFab" class="fab theme-fab hidden" type="button" aria-live="polite" aria-pressed="false">
+  <i class="fa fa-circle-half-stroke"></i>
+  <span class="fab-label" id="themeFabLabel">Light</span>
+</button>
 
-  <dialog id="rightsDialog" class="policy-dialog" aria-labelledby="rightsDialogTitle">
-    <form method="dialog" class="policy-dialog__content">
-      <header>
-        <h2 id="rightsDialogTitle" data-i18n="dialogs.rights.title">Marcas registradas y derechos de autor</h2>
-        <button
-          type="submit"
-          class="dialog-close"
-          value="close"
-          aria-label="Cerrar"
-          data-dialog-close
-          data-i18n-attrs="aria-label:dialogs.close"
-        >×</button>
-      </header>
-      <p id="rightsPrimary">© <span id="copyrightYear"></span> ShieldOps Consortium. Todos los derechos reservados. ShieldOps, el emblema Shield y las marcas relacionadas están protegidos.</p>
-      <p data-i18n="dialogs.rights.body2">Se prohíbe la reproducción, redistribución o modificación no autorizada de los activos de la plataforma. Los nombres de terceros siguen siendo propiedad de sus respectivos dueños y se mencionan solo para identificación.</p>
-    </form>
-  </dialog>
+<script src="https://unpkg.com/zustand/umd/zustand.development.js"></script>
+<script src="services/fallback_kb.js"></script>
+<script>
+/* ---------- CONFIG (must match Worker) ---------- */
+const INTEGRITY_VALUE   = (document.querySelector('meta[name="integrity-token"]')?.content||'').trim() || 'https://chattiavato-a11y.github.io';
+const CF_WORKER_URL = 'https://withered-mouse-9aee.grabem-holdem-nuts-right.workers.dev/';
+const INTEGRITY_GATEWAY = CF_WORKER_URL.replace(/\/$/, '');
+const INTEGRITY_PROTOCOLS = 'CORS,CSP,OPS-CySec-Core,CISA,NIST,PCI-DSS,SHA-384,SHA-512';
+const CHANNELLA_HEADER = 'X-OPS-Channella';
+const CHANNELLA_CANONICAL = 'ops-channella-v1';
 
-<script src="./shield.js" defer></script>
-<script src="./i18n.js" defer></script>
-<script type="module" src="./main.js"></script>
+function randomHex(bytes = 16){
+  try {
+    const view = new Uint8Array(bytes);
+    const cryptoObj = (typeof window !== 'undefined' && window.crypto)
+      ? window.crypto
+      : (typeof crypto !== 'undefined' ? crypto : null);
+    if (cryptoObj?.getRandomValues) {
+      cryptoObj.getRandomValues(view);
+      return Array.from(view, b => b.toString(16).padStart(2,'0')).join('');
+    }
+  } catch {}
+  let fallback = '';
+  for (let i=0;i<bytes;i++) fallback += Math.floor(Math.random()*256).toString(16).padStart(2,'0');
+  return fallback;
+}
+const SESSION_NONCE = randomHex(16);
+const API_BASE = INTEGRITY_GATEWAY;           // single Worker handles auth+chat+stt
+const CHAT_PATH = '/api/chat';
+const STT_PATH  = '/api/stt';
+const AUTH_URL  = `${API_BASE}/auth/issue`;
+const ESCALATION_URL = `${API_BASE}/fallback/escalate`;
+const STATUS_POLL_INTERVAL_MS = 30000;
+const API_DEGRADE_MEMORY_MS = 90000;
+const CONFIDENCE_THRESHOLD = 'low'; // escalate when server marks "low"
+
+/* ---------- Shared headers ---------- */
+const sharedIntegrityHeaders = Object.freeze({
+  'X-Integrity': INTEGRITY_VALUE,
+  'X-Integrity-Gateway': INTEGRITY_GATEWAY,
+  'X-Integrity-Protocols': INTEGRITY_PROTOCOLS,
+  'X-Integrity-Key': CHANNELLA_CANONICAL,
+  [CHANNELLA_HEADER]: CHANNELLA_CANONICAL,
+  'X-Session-Nonce': SESSION_NONCE
+});
+
+/* ---------- UI refs ---------- */
+const titleEl = document.getElementById('titleEl');
+const voiceCtrl = document.getElementById('voiceCtrl');
+const langCtrl = document.getElementById('langCtrl');
+const themeCtrl = document.getElementById('themeCtrl');
+const statusBanner = document.getElementById('status-banner');
+const statusText = document.getElementById('statusText');
+const syncIndicator = document.getElementById('syncIndicator');
+const syncLabel = document.getElementById('syncLabel');
+const logEl  = document.querySelector('#chat-log');
+const form   = document.querySelector('#chatbot-input-row');
+const input  = document.querySelector('#chatbot-input');
+const send   = document.querySelector('#chatbot-send');
+const honeyp = document.querySelector('#chatbot-company');
+const tTok   = document.querySelector('#turnstile-token');
+const themeFab = document.getElementById('themeFab');
+const themeFabLabel = document.getElementById('themeFabLabel');
+const supportCtrl = document.getElementById('resetCtrl');
+const supportOverlay = document.getElementById('resetPopover');
+const supportClose = document.getElementById('supportClose');
+const resetThreadBtn = document.getElementById('resetThread');
+const submitFeedbackBtn = document.getElementById('submitFeedback');
+const state = { conversation:[], isSending:false };
+const integrityState = { timer:null, focusBound:false, summary:null, apiDegradedUntil:0, lastChecked:null, lastError:null, lastTtl:null };
+const storage = (()=>{ try{return window.localStorage;}catch{return null;} })();
+const securityState = { lastSweep:null };
+const speechState = { recognition:null, listening:false, speakEnabled:false, supported:false, langCode:'en-US', allowTts:false, warnedUnsupported:false };
+const { create } = window.zustand || {};
+const defaultThemes = Object.freeze({
+  dark:{ tokens:{
+    'clr-primary':'#00c4ff','clr-accent':'#ff3bdb',
+    'body-bg':'#050111','body-text':'#f4f3ff',
+    'surface':'#251541','surface-soft':'#220f3a','surface-alt':'#1b0e2d',
+    'bot-bg':'#321b53','bot-text':'#ffffff','user-text':'#050118','control-bg':'rgba(255,255,255,0.08)','outline-strong':'#ffd400'
+  }},
+  light:{ tokens:{
+    'clr-primary':'#00c4ff','clr-accent':'#ff3bdb',
+    'body-bg':'#fdfbff','body-text':'#1b1030',
+    'surface':'#faf6ff','surface-soft':'#ece0ff','surface-alt':'#f5edff',
+    'bot-bg':'#efe7ff','bot-text':'#2d1650','user-text':'#fdfbff','control-bg':'rgba(10,4,32,0.08)','outline-strong':'#2d1650'
+  }},
+  'high-contrast':{ tokens:{
+    'clr-primary':'#ffd400','clr-accent':'#ff007a',
+    'body-bg':'#0b0b0b','body-text':'#ffffff',
+    'surface':'#000000','surface-soft':'#0f0f0f','surface-alt':'#0b0b0b',
+    'bot-bg':'#1a1a1a','bot-text':'#fdfdfd','user-text':'#0b0b0b','control-bg':'rgba(255,255,255,0.18)','outline-strong':'#00e0ff'
+  }}
+});
+
+const useUiStore = create ? create((set)=>({
+  theme:'light',
+  themeConfig: defaultThemes,
+  supportOpen:false,
+  setTheme:(theme)=> set({ theme }),
+  setThemeConfig:(cfg)=> set({ themeConfig:{...defaultThemes, ...cfg} }),
+  setSupportOpen:(supportOpen)=> set({ supportOpen })
+})) : { getState:()=>({theme:'light',themeConfig:defaultThemes}) };
+
+const i18n = Object.freeze({
+  en:{ title:'Chattia', input:'Type your message… [Enter]', sendLabel:'Send message',
+      errors:{ unreachable:"Error: Can’t reach Chattia." },
+      status:{ online:'Secure link active', offline:'Offline – storing messages locally', fallback:'Primary API unreachable – using local safeguard' },
+      notes:{ verifying:'Verifying integrity…', gatewayReady:'Integrity synchronized (signature TTL {ttl}s)', gatewayDegraded:'Integrity gateway unreachable', apiDegraded:'Primary API unreachable', offlineQueue:'Offline – local queue' } },
+  es:{ title:'Chattia', input:'Escribe tu mensaje… [Enter]', sendLabel:'Enviar mensaje',
+      errors:{ unreachable:'Error: No puedo conectar con Chattia.' },
+      status:{ online:'Canal seguro activo', offline:'Sin conexión – guardando localmente', fallback:'API principal inalcanzable – salvaguarda local' },
+      notes:{ verifying:'Verificando integridad…', gatewayReady:'Pasarela sincronizada (TTL de firma {ttl}s)', gatewayDegraded:'Pasarela inalcanzable', apiDegraded:'API inalcanzable', offlineQueue:'Sin conexión – cola local' } }
+});
+
+function currentLang(){ const lng = (document.documentElement.lang || 'en').toLowerCase(); return lng.startsWith('es') ? 'es' : 'en'; }
+function setLocale(locale){
+  document.documentElement.lang = locale;
+  const L = i18n[locale]||i18n.en;
+  titleEl.textContent = L.title;
+  input.placeholder = L.input;
+  send.setAttribute('aria-label', L.sendLabel);
+  updateLangCtrl(locale);
+  refreshStatusBanner();
+  setSpeechLocale(locale);
+  try{ localStorage.setItem('chattia:locale', locale); }catch{}
+}
+function cycleLocale(){ setLocale(currentLang()==='en'?'es':'en'); }
+
+function updateLangCtrl(locale){
+  if(!langCtrl) return;
+  const isEs = locale === 'es';
+  langCtrl.textContent = isEs ? 'EN' : 'ES';
+  langCtrl.setAttribute('aria-pressed', isEs ? 'true' : 'false');
+  langCtrl.classList.toggle('active', isEs);
+  langCtrl.setAttribute('aria-label', isEs ? 'Idioma actual español. Cambiar a inglés' : 'Current language English. Switch to Spanish');
+}
+
+/* ---------- Theme ---------- */
+const THEME_KEY = 'chattia-theme';
+const themeOrder = ['light','dark','high-contrast'];
+
+function applyThemeTokens(theme){
+  const { themeConfig } = useUiStore.getState();
+  const tokens = themeConfig?.[theme]?.tokens || themeConfig?.dark?.tokens || Object.values(themeConfig||{})?.[0]?.tokens;
+  if(!tokens) return;
+  const root = document.documentElement;
+  Object.entries(tokens).forEach(([k,v])=> root.style.setProperty(`--${k}`, v));
+  document.body.dataset.theme = theme;
+  document.body.classList.add('with-transition');
+  updateThemeCtrl(theme);
+  try{ localStorage.setItem(THEME_KEY, theme); }catch{}
+}
+
+function updateThemeCtrl(theme){
+  if(!themeCtrl) return;
+  const label = theme==='high-contrast' ? 'High contrast' : (theme==='dark' ? 'Dark' : 'Light');
+  themeCtrl.textContent = label.toUpperCase();
+  themeCtrl.setAttribute('aria-pressed', theme==='dark' || theme==='high-contrast');
+  themeCtrl.classList.toggle('active', theme!=='light');
+  themeCtrl.setAttribute('aria-label', `Current theme: ${label}. Click to change`);
+}
+
+function cycleTheme(){
+  const current = useUiStore.getState().theme;
+  const idx = themeOrder.indexOf(current);
+  const next = themeOrder[(idx+1)%themeOrder.length];
+  useUiStore.getState().setTheme?.(next);
+  applyThemeTokens(next);
+}
+
+async function fetchThemeConfig(){
+  try{
+    const res = await fetch(`${API_BASE}/config/themes`, { headers:{...sharedIntegrityHeaders}, cache:'no-store' });
+    if(!res.ok) throw new Error('theme_config_error:'+res.status);
+    const data = await res.json();
+    const themes = data?.themes;
+    if(themes && typeof themes === 'object'){
+      useUiStore.getState().setThemeConfig?.(themes);
+    }
+  }catch(err){
+    console.warn('Using fallback theme config', err);
+  }
+}
+
+function initTheme(){
+  const stored = (()=>{ try{return localStorage.getItem(THEME_KEY);}catch{return null;} })();
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const initial = stored || (prefersDark ? 'dark' : 'light');
+  useUiStore.getState().setTheme?.(initial);
+  applyThemeTokens(initial);
+}
+
+themeCtrl?.addEventListener('click', cycleTheme);
+fetchThemeConfig().finally(initTheme);
+
+/* ---------- Status / Integrity ---------- */
+function getSummaryTtl(summary){
+  const ttlRaw = Number(summary?.signature_ttl ?? summary?.signatureTtl ?? summary?.signatureTTL);
+  return Number.isFinite(ttlRaw) ? ttlRaw : null;
+}
+function isApiDegraded(){ return Date.now() < (integrityState.apiDegradedUntil || 0); }
+function markApiDegraded(ms=API_DEGRADE_MEMORY_MS){
+  integrityState.apiDegradedUntil = Date.now() + Math.max(0, ms);
+  updateSyncIndicator();
+}
+function clearApiDegraded(){
+  integrityState.apiDegradedUntil = 0;
+  updateSyncIndicator();
+}
+
+function hasLiveWorkerLink(){
+  if(!navigator.onLine) return false;
+  if(isApiDegraded()) return false;
+  return Boolean(integrityState.summary);
+}
+
+function updateSyncIndicator(){
+  if(!syncIndicator || !syncLabel) return;
+  const linked = hasLiveWorkerLink();
+  syncIndicator.dataset.state = linked ? 'linked' : 'unlinked';
+  syncIndicator.setAttribute('aria-label', linked ? 'Worker sync established' : 'Worker sync unavailable');
+  syncLabel.textContent = linked ? '[SYNC]' : '[SYNC?]';
+}
+
+function formatStatusNote(locale, key, vars={}){
+  if(!key) return '';
+  const dict = i18n[locale]?.notes || i18n.en.notes || {};
+  let template = dict[key]; if(!template) return '';
+  return template.replace(/\{([^}]+)\}/g, (_, t)=> String(vars[t.trim()] ?? ''));
+}
+function refreshStatusBanner(noteKey=null, vars=null){
+  const locale = currentLang();
+  const statusCfg = i18n[locale]?.status || i18n.en.status;
+  let mode = 'online';
+  if(!navigator.onLine) mode = 'offline';
+  else if (isApiDegraded()) mode = 'fallback';
+  statusBanner.classList.remove('status-online','status-offline','status-fallback');
+  statusBanner.classList.add(mode==='fallback'?'status-fallback':(mode==='offline'?'status-offline':'status-online'));
+  const label = statusCfg[mode] || statusCfg.online;
+  const note = noteKey ? formatStatusNote(locale, noteKey, vars||{}) : '';
+  statusText.textContent = note ? `${label} — ${note}` : label;
+  updateSyncIndicator();
+}
+async function pollIntegritySummary(){
+  if(!navigator.onLine){ refreshStatusBanner('offlineQueue'); return null; }
+  try{
+    const res = await fetch(`${INTEGRITY_GATEWAY}/health/summary`, { headers: sharedIntegrityHeaders, cache:'no-store' });
+    if(!res.ok) throw new Error('integrity_health_error:'+res.status);
+    const data = await res.json();
+    integrityState.summary = data;
+    integrityState.lastChecked = Date.now();
+    integrityState.lastError = null;
+    integrityState.lastTtl = getSummaryTtl(data);
+    if(!isApiDegraded()){
+      const ttl = integrityState.lastTtl;
+      refreshStatusBanner('gatewayReady', { ttl: Number.isFinite(ttl) ? ttl : 'N/A' });
+    }
+    return data;
+  }catch{
+    integrityState.summary = null;
+    integrityState.lastError = 'Integrity gateway unreachable';
+    if(!isApiDegraded()) refreshStatusBanner('gatewayDegraded');
+    return null;
+  }
+}
+function startIntegrityMonitor(){
+  refreshStatusBanner('verifying');
+  pollIntegritySummary();
+  if(integrityState.timer) clearInterval(integrityState.timer);
+  integrityState.timer = setInterval(pollIntegritySummary, STATUS_POLL_INTERVAL_MS);
+  if(!integrityState.focusBound){
+    window.addEventListener('focus', pollIntegritySummary);
+    integrityState.focusBound = true;
+  }
+}
+
+window.addEventListener('online', ()=>{
+  pollIntegritySummary();
+  refreshStatusBanner();
+});
+window.addEventListener('offline', ()=>{
+  refreshStatusBanner('offlineQueue');
+});
+
+/* ---------- Memory ---------- */
+const MEMORY_KEY = 'chattia.memory.v1';
+const MEMORY_WINDOW = 40;
+function validMemoryEntry(entry){ return entry && typeof entry === 'object' && typeof entry.role === 'string' && typeof entry.content === 'string'; }
+function loadMemory(){
+  try { const raw = localStorage.getItem(MEMORY_KEY); if(!raw) return []; const arr = JSON.parse(raw); return Array.isArray(arr)?arr.filter(validMemoryEntry).slice(-MEMORY_WINDOW):[]; } catch { return []; }
+}
+function persistMemory(){ try{ localStorage.setItem(MEMORY_KEY, JSON.stringify(state.conversation.slice(-MEMORY_WINDOW))); }catch{} }
+function recordMessage(role, content, meta = {}){ state.conversation.push({ role, content, meta, ts: Date.now() }); if(state.conversation.length>MEMORY_WINDOW) state.conversation = state.conversation.slice(-MEMORY_WINDOW); persistMemory(); }
+
+/* ---------- UI helpers ---------- */
+function addMsg(text, who='bot'){
+  const div = document.createElement('div');
+  div.className = `chat-msg ${who==='user'?'user':'bot'}`;
+  div.textContent = String(text||'').trim() || '…';
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+  return div;
+}
+function updateSend(){
+  const disabled = state.isSending || !input.value.trim();
+  send.disabled = disabled;
+}
+
+/* ---------- Support overlay ---------- */
+function openSupport(){
+  supportOverlay?.classList.remove('hidden');
+  supportCtrl?.setAttribute('aria-expanded','true');
+  useUiStore.getState().setSupportOpen?.(true);
+}
+
+function closeSupport(){
+  supportOverlay?.classList.add('hidden');
+  supportCtrl?.setAttribute('aria-expanded','false');
+  useUiStore.getState().setSupportOpen?.(false);
+}
+
+function resetConversation(){
+  state.conversation = [];
+  logEl.innerHTML = '';
+  persistMemory();
+  bootstrapConversation();
+}
+
+function submitFeedback(){
+  const feedback = prompt('Share quick feedback for the OPS team');
+  if(!feedback) return;
+  const note = `Feedback noted: ${feedback}`;
+  addMsg(note,'bot');
+  recordMessage('assistant', note, { source:'feedback' });
+}
+
+supportCtrl?.addEventListener('click', ()=>{
+  if(supportOverlay?.classList.contains('hidden')) openSupport();
+  else closeSupport();
+});
+supportClose?.addEventListener('click', closeSupport);
+resetThreadBtn?.addEventListener('click', ()=>{ resetConversation(); closeSupport(); });
+submitFeedbackBtn?.addEventListener('click', ()=>{ submitFeedback(); closeSupport(); });
+
+/* ---------- Speech recognition + TTS ---------- */
+function speechSupported(){ return typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window); }
+function ttsSupported(){ return typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window; }
+
+function updateVoiceUi(){
+  if(!voiceCtrl) return;
+  if(!speechState.supported){
+    voiceCtrl.textContent = 'No mic';
+    voiceCtrl.disabled = true;
+    voiceCtrl.setAttribute('aria-pressed','false');
+    voiceCtrl.title = 'Speech recognition not supported in this browser';
+    voiceCtrl.classList.remove('active');
+    return;
+  }
+  voiceCtrl.disabled = false;
+  voiceCtrl.textContent = speechState.listening ? 'Stop' : 'Voice';
+  voiceCtrl.setAttribute('aria-pressed', speechState.listening ? 'true' : 'false');
+  voiceCtrl.title = speechState.listening ? 'Listening… click to stop' : 'Click to start voice capture';
+  voiceCtrl.classList.toggle('active', speechState.listening);
+}
+
+function setSpeechLocale(locale){
+  const langCode = locale==='es' ? 'es-EC' : 'en-US';
+  speechState.langCode = langCode;
+  if (speechState.recognition) speechState.recognition.lang = langCode;
+}
+
+function speakReply(text){
+  if(!speechState.speakEnabled || !speechState.allowTts || !ttsSupported()) return;
+  const utterance = new SpeechSynthesisUtterance(String(text||''));
+  utterance.lang = speechState.langCode || 'en-US';
+  try{ speechSynthesis.cancel(); }catch{}
+  speechSynthesis.speak(utterance);
+}
+
+function setupSpeech(){
+  speechState.supported = speechSupported();
+  speechState.speakEnabled = ttsSupported();
+  if(!speechState.supported){ updateVoiceUi(); return; }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  speechState.recognition = new Recognition();
+  speechState.recognition.continuous = false;
+  speechState.recognition.interimResults = false;
+  speechState.recognition.maxAlternatives = 1;
+  setSpeechLocale(currentLang());
+
+  speechState.recognition.onstart = ()=>{ speechState.listening=true; updateVoiceUi(); };
+  speechState.recognition.onend = ()=>{ speechState.listening=false; updateVoiceUi(); };
+  speechState.recognition.onerror = ()=>{ speechState.listening=false; updateVoiceUi(); };
+  speechState.recognition.onresult = (event)=>{
+    const transcript = (event.results?.[0]?.[0]?.transcript || '').trim();
+    if(!transcript) return;
+    input.value = transcript;
+    updateSend();
+    form.requestSubmit();
+  };
+  updateVoiceUi();
+}
+
+function toggleVoice(){
+  if(!speechState.recognition){
+    if(!speechState.supported && !speechState.warnedUnsupported){
+      addMsg('Voice capture is not available in this browser.', 'bot');
+      speechState.warnedUnsupported = true;
+    }
+    return;
+  }
+  if(speechState.listening){
+    try{ speechState.recognition.stop(); }catch{}
+  } else {
+    speechState.allowTts = speechState.allowTts || speechState.speakEnabled;
+    try{ speechState.recognition.start(); speechState.listening=true; }catch{}
+  }
+  updateVoiceUi();
+}
+
+/* ---------- Integrity signing ---------- */
+function hexNonce32(){ return randomHex(16); }
+async function sha256Hex(input){
+  const enc = typeof input==='string' ? new TextEncoder().encode(input) : (input instanceof Uint8Array ? input : new Uint8Array(input));
+  const d = await crypto.subtle.digest('SHA-256', enc);
+  return [...new Uint8Array(d)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function mintSignature(path, method, bodySha){
+  const ts = Math.floor(Date.now()/1000);
+  const nonce = hexNonce32();
+  const payload = { ts, nonce, method, path, body_sha256: bodySha };
+  const r = await fetch(AUTH_URL, { method:'POST', headers:{...sharedIntegrityHeaders,'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  if (!r.ok) throw new Error('auth_issue_failed');
+  const j = await r.json();
+  if (!j?.signature) throw new Error('signature_missing');
+  return { signature:j.signature, ts:String(ts), nonce };
+}
+async function signedPost(path, json){
+  const body = JSON.stringify(json);
+  const bodySha = await sha256Hex(body);
+  const {signature, ts, nonce} = await mintSignature(path, 'POST', bodySha);
+  return fetch(`${API_BASE}${path}`, {
+    method:'POST',
+    headers:{ ...sharedIntegrityHeaders, 'Content-Type':'application/json','X-Request-Signature':signature,'X-Request-Timestamp':ts,'X-Request-Nonce':nonce },
+    body
+  });
+}
+
+/* ---------- Fallback reply ---------- */
+function fallbackReply(userText){
+  try {
+    if (window.FallbackKB?.reply){
+      const res = window.FallbackKB.reply(userText||'', currentLang());
+      if (typeof res === 'string') return res;
+      if (res && typeof res.text === 'string' && res.text.trim()) return res.text;
+    }
+  } catch {}
+  return currentLang()==='es' ? 'Estoy en modo local protegido. ¿En qué puedo ayudarte?' : 'I’m in safeguarded local mode. How can I help?';
+}
+/* ---------- Bootstrap ---------- */
+function bootstrapConversation(){
+  const saved = loadMemory();
+  if (saved.length){
+    state.conversation = saved;
+    for (const msg of saved) addMsg(msg.content, msg.role === 'user' ? 'user' : 'bot');
+    return;
+  }
+  const greeting = fallbackReply('hello');
+  addMsg(greeting,'bot');
+  recordMessage('assistant', greeting, { source:'fallback', reason:'greeting' });
+}
+setLocale((()=>{ try{ return localStorage.getItem('chattia:locale')||'en'; }catch{return 'en';} })());
+langCtrl.addEventListener('click', cycleLocale);
+setupSpeech();
+voiceCtrl?.addEventListener('click', toggleVoice);
+bootstrapConversation();
+startIntegrityMonitor();
+
+/* ---------- Chat flow ---------- */
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if (honeyp?.value.trim()) return; // honeypot
+
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value=''; updateSend();
+
+  state.isSending = true;
+  updateSend();
+
+  addMsg(msg,'user');
+  recordMessage('user', msg, { source:'web' });
+
+  const thinking = addMsg('…','bot');
+
+  try{
+    const payload = {
+      messages: state.conversation.map(m => ({ role:m.role, content:m.content })),
+      metadata:{ channel:'chattia-web', locale: currentLang() }
+    };
+
+    const r = await signedPost(CHAT_PATH, payload);
+    if(!r.ok){
+      markApiDegraded();
+      throw new Error(`chat_failed:${r.status}`);
+    }
+    const j = await r.json();
+    const reply = (j.reply||'').trim();
+
+    // escalate if low confidence or empty
+    const confidence = (j.confidence||'').toLowerCase();
+    const shouldEscalate = !reply || confidence === 'low';
+    if (shouldEscalate){
+      const fb = fallbackReply(msg);
+      thinking.textContent = fb;
+      recordMessage('assistant', fb, { source:'fallback', reason:'low_confidence', upstreamReply: reply||null, confidence });
+      speakReply(fb);
+      // notify CF Worker for telemetry
+      try{
+        fetch(ESCALATION_URL, {
+          method:'POST',
+          headers:{ ...sharedIntegrityHeaders, 'Content-Type':'application/json' },
+          body: JSON.stringify({ reason:'low_confidence', confidence, userText: msg, fallback: fb, timestamp: new Date().toISOString() })
+        });
+      }catch{}
+    } else {
+      thinking.textContent = reply;
+      recordMessage('assistant', reply, { source:'api', confidence });
+      speakReply(reply);
+    }
+    clearApiDegraded();
+    refreshStatusBanner('gatewayReady', { ttl: getSummaryTtl(integrityState.summary) ?? 'N/A' });
+  }catch(err){
+    markApiDegraded();
+    const fb = fallbackReply(msg);
+    thinking.textContent = fb;
+    recordMessage('assistant', fb, { source:'fallback', reason:'network_error', error: String(err?.message||'error') });
+    speakReply(fb);
+    refreshStatusBanner('apiDegraded');
+    try{
+      fetch(ESCALATION_URL, {
+        method:'POST',
+        headers:{ ...sharedIntegrityHeaders, 'Content-Type':'application/json' },
+        body: JSON.stringify({ reason:'network_error', userText: msg, fallback: fb, timestamp: new Date().toISOString() })
+      });
+    }catch{}
+  }finally{
+    state.isSending = false;
+    updateSend();
+  }
+});
+
+input.addEventListener('input', updateSend);
+updateSend();
+</script>
 </body>
 </html>

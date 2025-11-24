@@ -1,0 +1,57 @@
+# wrangler.toml — withered-mouse-9aee (Integrity Gateway + Chat/STT + Scan + Memory)
+
+name = "withered-mouse-9aee"
+main = "src/worker.js"
+compatibility_date = "2025-11-01"
+workers_dev = true
+# If you need Node libs (usually not for this Worker), uncomment:
+# compatibility_flags = ["nodejs_compat"]
+
+# Workers AI (bind as `env.AI`)
+[ai]
+binding = "AI"
+
+# -------- Optional routing (leave commented when using *.workers.dev) --------
+# [routes]
+#  - pattern = "withered-mouse-9aee.grabem-holdem-nuts-right.workers.dev/*"
+#    zone_name = "grabem-holdem-nuts-right.workers.dev"
+
+# -------- KV namespaces --------
+# Minimal footprint: only OPS_NONCE_KV is required for HMAC replay defense
+# (and is also reused for honeypot bans if OPS_BANLIST_KV is not configured).
+[[kv_namespaces]]
+binding = "OPS_NONCE_KV"        # mint/use replay defense; fallback honeypot banlist
+id = "<KV_ID_NONCE>"
+
+# Optional hard separation for honeypot bans; omit to reuse OPS_NONCE_KV
+# [[kv_namespaces]]
+# binding = "OPS_BANLIST_KV"
+# id = "<KV_ID_BANLIST>"
+
+# Optional extras (commented out to keep Asset IDs minimal). Uncomment if/when
+# you add storage for transcripts or artifacts.
+# [[kv_namespaces]]
+# binding = "OPS_TRANSCRIPTS_KV"  # lightweight transcripts / scan reports
+# id = "<KV_ID_TRANSCRIPTS>"
+
+# [[r2_buckets]]
+# binding = "OPS_ARTIFACTS_R2"
+# bucket_name = "ops-artifacts"   # create in dashboard; adjust if different
+
+# [[d1_databases]]
+# binding = "OPS_TRAINING_DB"
+# database_name = "ops_training_db"
+# database_id = "<D1_ID_TRAINING>"
+
+# -------- Non-sensitive variables (safe to keep in repo) --------
+[vars]
+INTEGRITY_REQUIRED   = "true"
+INTEGRITY_GATEWAY    = "https://withered-mouse-9aee.grabem-holdem-nuts-right.workers.dev"
+INTEGRITY_PROTOCOLS  = "CORS,CSP,OPS-CySec-Core,CISA,NIST,PCI-DSS,SHA-384,SHA-512"
+SIG_TTL_SECONDS      = "300"
+LLM_MAX_TOKENS       = "500"
+ALLOW_WORKERS_DEV    = "true"
+ALLOW_DASH           = "false"
+
+CHANNELLA_EXPECTED_PUB = "{ \"crv\": \"P-256\", \"ext\": true, \"key_ops\": [], \"kty\": \"EC\", \"x\": \"LwrIIZR3AcENpAtpQRQ5DtGo5ML7diFfILRgg5DUCdI\", \"y\": \"ALclNxh3f9sSIZ1xBtsCA8f49Te2XFlCg0pysX1x8P0\" }"
+
